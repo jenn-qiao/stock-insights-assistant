@@ -150,10 +150,6 @@ with st.sidebar:
     )
 
 st.title("📈 Stock Insights Assistant")
-st.markdown(
-    "<span style='color: gray; font-size: 1.1rem;'>by Jennifer Qiao</span>",
-    unsafe_allow_html=True,
-)
 st.caption("Ask natural language questions about stocks and get AI-powered summaries.")
 
 if DEMO_MODE:
