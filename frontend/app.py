@@ -33,6 +33,8 @@ def _init_session_state() -> None:
         st.session_state.messages = []
     if "example_questions" not in st.session_state:
         st.session_state.example_questions = random.sample(EXAMPLE_QUESTIONS, 4)
+    if "pending_question" not in st.session_state:
+        st.session_state.pending_question = None
 
 
 def _render_assistant_reply(question: str) -> None:
@@ -101,15 +103,22 @@ def main() -> None:
             if message.get("symbols"):
                 st.caption(f"Stocks analysed: {', '.join(message['symbols'])}")
 
-    question = st.chat_input("Ask about stocks…")
-    if question:
+    # Handle sidebar question after history so it renders inline without duplication
+    if st.session_state.pending_question:
+        question = st.session_state.pending_question
+        st.session_state.pending_question = None
         _handle_question(question)
+
+    typed = st.chat_input("Ask about stocks…")
+    if typed:
+        _handle_question(typed)
 
     with st.sidebar:
         st.header("Example questions")
         for example in st.session_state.example_questions:
             if st.button(example, use_container_width=True, key=f"example_{example}"):
-                _handle_question(example)
+                st.session_state.pending_question = example
+                st.rerun()
 
         st.divider()
         st.markdown(

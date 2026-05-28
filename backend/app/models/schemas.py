@@ -30,6 +30,15 @@ class CompanyProfileResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class CandleResponse(BaseModel):
+    symbol: str
+    opens: list[float]
+    closes: list[float]
+    highs: list[float]
+    lows: list[float]
+    timestamps: list[int]
+
+
 class InsightResponse(BaseModel):
     symbols: list[str]
     summary: str

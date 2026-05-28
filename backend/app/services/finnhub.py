@@ -2,8 +2,10 @@ import logging
 
 import httpx
 
+import time
+
 from app.config import settings
-from app.models.schemas import CompanyProfileResponse, StockQuoteResponse
+from app.models.schemas import CandleResponse, CompanyProfileResponse, StockQuoteResponse
 from app.utils.exceptions import ExternalAPIError, StockNotFoundError
 
 BASE_URL = "https://finnhub.io/api/v1"
@@ -34,6 +36,59 @@ MOCK_PROFILE = CompanyProfileResponse(
 )
 
 
+# Forex pairs routed to OANDA feed on Finnhub (symbol format: OANDA:<BASE>_<QUOTE>)
+FOREX_PAIRS = {
+    "EURUSD": "OANDA:EUR_USD", "GBPUSD": "OANDA:GBP_USD", "USDJPY": "OANDA:USD_JPY",
+    "USDCHF": "OANDA:USD_CHF", "AUDUSD": "OANDA:AUD_USD", "USDCAD": "OANDA:USD_CAD",
+    "NZDUSD": "OANDA:NZD_USD", "EURGBP": "OANDA:EUR_GBP", "EURJPY": "OANDA:EUR_JPY",
+    "GBPJPY": "OANDA:GBP_JPY", "USDCNY": "OANDA:USD_CNY", "USDINR": "OANDA:USD_INR",
+    "USDMXN": "OANDA:USD_MXN", "USDBRL": "OANDA:USD_BRL", "USDKRW": "OANDA:USD_KRW",
+    "USDSGD": "OANDA:USD_SGD", "USDHKD": "OANDA:USD_HKD", "USDSEK": "OANDA:USD_SEK",
+    "USDNOK": "OANDA:USD_NOK", "USDDKK": "OANDA:USD_DKK",
+}
+
+# Crypto tickers that should be routed to Binance feed on Finnhub
+CRYPTO_TICKERS = {
+    "BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "AVAX", "MATIC", "DOT",
+    "LTC", "LINK", "UNI", "SHIB", "TRX", "ATOM", "XLM", "ALGO", "VET",
+}
+
+# International exchange prefixes for known tickers
+INTERNATIONAL_TICKERS = {
+    # UK (LSE)
+    "VOD": "LSE:VOD", "HSBA": "LSE:HSBA", "BP": "LSE:BP", "SHEL": "LSE:SHEL",
+    "AZN": "LSE:AZN", "GSK": "LSE:GSK", "RIO": "LSE:RIO", "BHP": "LSE:BHP",
+    # Germany (XETRA)
+    "SAP": "XETRA:SAP", "SIE": "XETRA:SIE", "BMW": "XETRA:BMW",
+    "VOW3": "XETRA:VOW3", "BAYN": "XETRA:BAYN", "DTE": "XETRA:DTE",
+    # Japan (TSE)
+    "7203": "TSE:7203",  # Toyota
+    "6758": "TSE:6758",  # Sony
+    "9984": "TSE:9984",  # SoftBank
+    # Hong Kong (HKEX)
+    "0700": "HKEX:0700",  # Tencent
+    "9988": "HKEX:9988",  # Alibaba HK
+}
+
+
+def normalise_symbol(symbol: str) -> str:
+    """Convert a raw ticker to the Finnhub-compatible symbol format.
+
+    - Forex pairs become OANDA:<BASE>_<QUOTE> (e.g. EURUSD -> OANDA:EUR_USD)
+    - Crypto tickers become BINANCE:<TICKER>USDT (e.g. BTC -> BINANCE:BTCUSDT)
+    - Known international tickers get their exchange prefix (e.g. VOD -> LSE:VOD)
+    - Everything else is passed through unchanged (US stocks, ETFs)
+    """
+    upper = symbol.upper().replace("/", "").replace("-", "").replace("_", "")
+    if upper in FOREX_PAIRS:
+        return FOREX_PAIRS[upper]
+    if upper in CRYPTO_TICKERS:
+        return f"BINANCE:{upper}USDT"
+    if upper in INTERNATIONAL_TICKERS:
+        return INTERNATIONAL_TICKERS[upper]
+    return upper
+
+
 class FinnhubService:
     """Async client for the Finnhub stock market API."""
 
@@ -53,7 +108,8 @@ class FinnhubService:
             logger.warning("No Finnhub key found, using mock data")
             return MOCK_QUOTE.model_copy(update={"symbol": symbol})
 
-        data = await self._get("/quote", {"symbol": symbol})
+        finnhub_symbol = normalise_symbol(symbol)
+        data = await self._get("/quote", {"symbol": finnhub_symbol})
 
         # Finnhub returns all zeros for unrecognised symbols
         if data.get("c", 0) == 0:
@@ -75,12 +131,60 @@ class FinnhubService:
             logger.warning("No Finnhub key found, using mock data")
             return MOCK_PROFILE.model_copy(update={"ticker": symbol})
 
-        data = await self._get("/stock/profile2", {"symbol": symbol})
+        finnhub_symbol = normalise_symbol(symbol)
+        data = await self._get("/stock/profile2", {"symbol": finnhub_symbol})
 
         if not data:
             raise StockNotFoundError(symbol)
 
         return CompanyProfileResponse.model_validate(data)
+
+    #For trends over time, e.g. "How has AAPL performed over the last month?"
+    async def get_candles(self, symbol: str, from_ts: int, to_ts: int, resolution: str = "D") -> CandleResponse:
+        """Fetch historical OHLC candles for a symbol over a date range.
+
+        Args:
+            symbol: Ticker symbol (will be normalised).
+            from_ts: Start of range as a Unix timestamp.
+            to_ts: End of range as a Unix timestamp.
+            resolution: Candle resolution — D (daily), W (weekly), M (monthly).
+
+        Returns:
+            CandleResponse with lists of OHLC values and timestamps.
+
+        Raises:
+            StockNotFoundError: If Finnhub returns no data.
+            ExternalAPIError: On network or HTTP failure.
+        """
+        if not settings.finnhub_api_key:
+            logger.warning("No Finnhub key found, using mock candle data")
+            now = int(time.time())
+            return CandleResponse(
+                symbol=symbol,
+                opens=[100.0, 101.0, 102.0],
+                closes=[101.0, 102.0, 103.0],
+                highs=[103.0, 104.0, 105.0],
+                lows=[99.0, 100.0, 101.0],
+                timestamps=[now - 172800, now - 86400, now],
+            )
+
+        finnhub_symbol = normalise_symbol(symbol)
+        data = await self._get(
+            "/stock/candle",
+            {"symbol": finnhub_symbol, "resolution": resolution, "from": from_ts, "to": to_ts},
+        )
+
+        if data.get("s") == "no_data" or not data.get("c"):
+            raise StockNotFoundError(symbol)
+
+        return CandleResponse(
+            symbol=symbol,
+            opens=data["o"],
+            closes=data["c"],
+            highs=data["h"],
+            lows=data["l"],
+            timestamps=data["t"],
+        )
 
     async def _get(self, path: str, params: dict) -> dict:
         """Make an authenticated GET request to the Finnhub API.
