@@ -74,6 +74,23 @@ st.markdown(
         color: #111827;
         box-shadow: none;
     }
+    [data-testid="stSidebar"] .sidebar-preview {
+        margin-top: 1rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid #e5e7eb;
+    }
+    [data-testid="stSidebar"] .sidebar-preview [data-testid="stChatMessage"] {
+        background: transparent;
+        padding: 0.35rem 0;
+    }
+    [data-testid="stSidebar"] .sidebar-preview [data-testid="stMarkdownContainer"] p {
+        font-size: 0.9rem;
+        line-height: 1.45;
+        margin-bottom: 0.35rem;
+    }
+    [data-testid="stSidebar"] .sidebar-preview [data-testid="stCaptionContainer"] p {
+        font-size: 0.75rem;
+    }
     [data-testid="stSidebar"] .sidebar-note {
         font-size: 0.8rem;
         color: #6b7280;
@@ -86,6 +103,13 @@ st.markdown(
         padding: 0.1rem 0.35rem;
         border-radius: 4px;
         font-size: 0.75rem;
+    }
+    [data-testid="stSidebar"] .sidebar-demo-footnote {
+        font-size: 0.75rem;
+        color: #6b7280;
+        font-style: italic;
+        margin-top: 0.25rem;
+        margin-bottom: 0.75rem;
     }
     </style>
     """,
@@ -154,6 +178,52 @@ def queue_question(prompt: str) -> None:
     st.rerun()
 
 
+def _latest_exchange() -> tuple[dict, dict | None] | None:
+    messages = st.session_state.messages
+    last_user_idx = None
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i]["role"] == "user":
+            last_user_idx = i
+            break
+    if last_user_idx is None:
+        return None
+
+    user = messages[last_user_idx]
+    assistant = None
+    if (
+        last_user_idx + 1 < len(messages)
+        and messages[last_user_idx + 1]["role"] == "assistant"
+    ):
+        assistant = messages[last_user_idx + 1]
+    return user, assistant
+
+
+def render_sidebar_preview() -> None:
+    """Latest Q&A under example buttons (matches mockup sidebar)."""
+    exchange = _latest_exchange()
+    if exchange is None:
+        return
+
+    user, assistant = exchange
+    st.markdown('<div class="sidebar-preview"></div>', unsafe_allow_html=True)
+
+    with st.chat_message("user"):
+        st.write(user["content"])
+
+    if assistant is not None:
+        with st.chat_message("assistant"):
+            st.write(assistant["content"])
+            if assistant.get("symbols"):
+                st.caption(f"Stocks analysed: {', '.join(assistant['symbols'])}")
+
+        if DEMO_MODE:
+            st.markdown(
+                '<p class="sidebar-demo-footnote">Demo data — replace API keys in '
+                "<code>.env</code> for live quotes.</p>",
+                unsafe_allow_html=True,
+            )
+
+
 # --- Process queued questions first (before any chat UI) ---
 if run_prompt := st.session_state.pop("run_query", None):
     with st.spinner("Fetching data..."):
@@ -165,6 +235,8 @@ with st.sidebar:
     for i, question in enumerate(st.session_state.example_questions):
         if st.button(question, key=f"example_{i}", use_container_width=True):
             queue_question(question)
+
+    render_sidebar_preview()
 
     st.markdown(
         '<p class="sidebar-note">Demo data — replace API keys in '
@@ -191,6 +263,11 @@ with chat_history:
             if message.get("symbols"):
                 st.caption(f"Stocks analysed: {', '.join(message['symbols'])}")
 
+    if DEMO_MODE and st.session_state.messages:
+        st.caption(
+            "Demo data — replace API keys in `.env` for live quotes."
+        )
+
 
 def render_search_bar() -> None:
     """Pinned search bar — must stay the last UI on the page."""
@@ -208,7 +285,6 @@ def render_search_bar() -> None:
                 queue_question(st.session_state.chat_query)
 
 
-# Pinned bottom bar when supported; otherwise native chat_input (pins to bottom).
 if hasattr(st, "bottom"):
     with st.bottom():
         render_search_bar()
