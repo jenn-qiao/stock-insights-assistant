@@ -87,6 +87,39 @@ st.markdown(
         border-radius: 4px;
         font-size: 0.75rem;
     }
+    .main .block-container {
+        padding-bottom: 6rem;
+    }
+    [data-testid="stForm"] {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 999;
+        background: #ffffff;
+        border-top: 1px solid #e5e7eb;
+        padding: 0.75rem 1.5rem 1.25rem;
+        margin: 0;
+        max-width: 100%;
+    }
+    [data-testid="stForm"] input {
+        background-color: #f3f4f6 !important;
+        border: 1px solid #e5e7eb !important;
+        border-radius: 24px !important;
+        padding: 0.75rem 1.25rem !important;
+        font-size: 1rem !important;
+    }
+    [data-testid="stForm"] button[kind="secondaryFormSubmit"] {
+        background-color: #e5e7eb !important;
+        border: none !important;
+        border-radius: 8px !important;
+        color: #374151 !important;
+        font-size: 1.1rem !important;
+        min-height: 2.75rem;
+    }
+    [data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover {
+        background-color: #d1d5db !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -99,10 +132,14 @@ if "example_questions" not in st.session_state:
         EXAMPLE_QUESTION_POOL,
         min(4, len(EXAMPLE_QUESTION_POOL)),
     )
+if "chat_query" not in st.session_state:
+    st.session_state.chat_query = ""
 
 
 def handle_question(prompt: str) -> None:
+    st.session_state.chat_query = prompt
     st.session_state.messages.append({"role": "user", "content": prompt})
+
     with st.chat_message("user"):
         st.write(prompt)
 
@@ -140,7 +177,8 @@ with st.sidebar:
     st.markdown("## Example questions")
     for i, question in enumerate(st.session_state.example_questions):
         if st.button(question, key=f"example_{i}", use_container_width=True):
-            st.session_state.pending_prompt = question
+            st.session_state.chat_query = question
+            st.session_state.submit_prompt = question
             st.rerun()
 
     st.markdown(
@@ -164,9 +202,21 @@ for message in st.session_state.messages:
         if message.get("symbols"):
             st.caption(f"Stocks analysed: {', '.join(message['symbols'])}")
 
-prompt = st.session_state.pop("pending_prompt", None)
-if prompt is None:
-    prompt = st.chat_input("Ask about stocks...")
+with st.form("chat_bar", clear_on_submit=False, border=False):
+    input_col, send_col = st.columns([12, 1])
+    with input_col:
+        st.text_input(
+            "Ask about stocks",
+            key="chat_query",
+            label_visibility="collapsed",
+            placeholder="Ask about stocks...",
+        )
+    with send_col:
+        submitted = st.form_submit_button("↑", use_container_width=True)
 
-if prompt:
-    handle_question(prompt)
+prompt_to_run = st.session_state.pop("submit_prompt", None)
+if prompt_to_run is None and submitted:
+    prompt_to_run = st.session_state.chat_query.strip() or None
+
+if prompt_to_run:
+    handle_question(prompt_to_run)
