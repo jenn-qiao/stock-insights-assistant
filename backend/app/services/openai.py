@@ -50,8 +50,8 @@ General:
 class OpenAIService:
     """Service for generating AI-powered stock summaries using OpenAI."""
 
-    def __init__(self, api_key: str):
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, api_key: str | None):
+        self.client = AsyncOpenAI(api_key=api_key) if api_key else None
 
     async def extract_tickers(self, question: str) -> list[str]:
         """Extract all stock ticker symbols from a natural language question.
@@ -159,5 +159,4 @@ class OpenAIService:
 
 
 
-openai_service = OpenAIService(api_key=settings.openai_api_key)
 

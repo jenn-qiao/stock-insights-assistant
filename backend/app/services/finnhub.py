@@ -210,4 +210,3 @@ class FinnhubService:
             raise ExternalAPIError(f"Could not reach Finnhub: {e}") from e
 
 
-finnhub_service = FinnhubService(api_key=settings.finnhub_api_key)

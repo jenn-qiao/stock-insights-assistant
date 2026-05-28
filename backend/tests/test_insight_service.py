@@ -126,7 +126,7 @@ async def test_safe_profile_returns_none_on_any_exception(service, mock_finnhub)
 
 def test_build_context_includes_all_quote_fields(service):
     quote = make_quote("AAPL")
-    result = service._build_context(["AAPL"], [quote], [None])
+    result = service._build_context(["AAPL"], [quote], [None], {}, None)
 
     assert result["AAPL Current Price"] == "$150.00"
     assert result["AAPL High"] == "$155.00"
@@ -137,7 +137,7 @@ def test_build_context_includes_all_quote_fields(service):
 
 
 def test_build_context_includes_profile_fields_when_present(service):
-    result = service._build_context(["AAPL"], [make_quote()], [make_profile()])
+    result = service._build_context(["AAPL"], [make_quote()], [make_profile()], {}, None)
 
     assert result["AAPL Company Name"] == "Apple Inc."
     assert result["AAPL Industry"] == "Technology"
@@ -146,7 +146,7 @@ def test_build_context_includes_profile_fields_when_present(service):
 
 
 def test_build_context_omits_profile_fields_when_none(service):
-    result = service._build_context(["AAPL"], [make_quote()], [None])
+    result = service._build_context(["AAPL"], [make_quote()], [None], {}, None)
 
     assert "AAPL Company Name" not in result
     assert "AAPL Industry" not in result
@@ -157,7 +157,7 @@ def test_build_context_handles_multiple_stocks(service):
     quotes = [make_quote("AAPL"), make_quote("MSFT")]
     profiles = [make_profile("AAPL"), None]
 
-    result = service._build_context(["AAPL", "MSFT"], quotes, profiles)
+    result = service._build_context(["AAPL", "MSFT"], quotes, profiles, {}, None)
 
     assert "AAPL Current Price" in result
     assert "MSFT Current Price" in result
