@@ -54,28 +54,53 @@ class OpenAIService:
                     {
                         "role": "system",
                         "content": (
-                            "Extract all stock ticker symbols from the user's question. "
-                            "The user may write a company name (e.g. Apple, Ford) or a ticker directly (e.g. AAPL, F, TSLA). "
-                            "In both cases, return the official exchange-listed ticker in uppercase. "
-                            "Examples: Apple -> AAPL, AAPL -> AAPL, Ford -> F, F -> F, Google -> GOOGL, Tesla -> TSLA. "
-                            "Return as a comma-separated list (e.g. AAPL,MSFT). "
-                            "If you cannot identify any stock or ticker, return 'UNKNOWN'."
+                            "You are a stock ticker resolver. Given a user question, identify every publicly traded company mentioned and return their official NYSE/NASDAQ ticker symbols.\n\n"
+                            "Rules:\n"
+                            "1. The user may use a company name, brand, product, subsidiary, or a misspelling — always resolve to the parent listed entity's ticker.\n"
+                            "2. Be typo-tolerant: 'appple', 'aPle', 'Appl', 'amazn', 'gogle', 'teslla' etc. should all be resolved to their correct ticker. Use phonetic and fuzzy matching.\n"
+                            "3. Ticker symbols are case-insensitive. If the user types 'aapl', 'AAPL', or 'Aapl', treat them all as the ticker AAPL. Resolve directly without asking.\n"
+                            "4. If the input looks like a ticker (1–5 letters, no spaces) but could also be a word or company name, prefer interpreting it as a ticker first. Only use SUGGEST if it genuinely could be either and you are not confident.\n"
+                            "2. Known mappings (non-exhaustive):\n"
+                            "   Stocks: Apple->AAPL, Google/Alphabet->GOOGL, Microsoft->MSFT, Amazon->AMZN, Tesla->TSLA, Meta/Facebook->META, Nvidia->NVDA, Netflix->NFLX, Spotify->SPOT, Ford->F, AMD->AMD, Palantir->PLTR, IonQ->IONQ, Uber->UBER, Airbnb->ABNB, Coinbase->COIN, Square/Block->XYZ, Shopify->SHOP, Visa->V, Mastercard->MA, JPMorgan->JPM, Goldman Sachs->GS, Disney->DIS, Nike->NKE, Starbucks->SBUX, Salesforce->CRM, Oracle->ORCL, Intel->INTC, Qualcomm->QCOM, PayPal->PYPL, Snap->SNAP, Twitter/X->X, Robinhood->HOOD, DoorDash->DASH, Lyft->LYFT, Rivian->RIVN, Lucid->LCID.\n"
+                            "   ETFs/Indices: S&P 500/SPDR/SPY->SPY, Nasdaq/QQQ->QQQ, Dow Jones/DIA->DIA, Russell 2000/IWM->IWM, VIX/volatility index->VIX, Total market/VTI->VTI, Emerging markets/EEM->EEM, Gold/GLD->GLD, Oil/USO->USO, ARK Innovation/ARKK->ARKK.\n"
+                            "5. If confident (including after fuzzy/typo matching), return a comma-separated list of tickers in uppercase (e.g. AAPL,MSFT).\n"
+                            "6. If you think you know the company but want to confirm due to an unusual spelling, return: SUGGEST:<TICKER>:<company name as the user wrote it>  (e.g. SUGGEST:AAPL:appple)\n"
+                            "7. Only return UNKNOWN if you genuinely have no idea what company the user is referring to."
                         ),
                     },
                     {"role": "user", "content": question},
                 ],
-                max_tokens=20,
+                max_tokens=60,
                 temperature=0,
             )
-            raw = response.choices[0].message.content.strip().upper()
+            raw = response.choices[0].message.content.strip()
         except Exception as e:
             logger.error("Ticker extraction failed: %s", e)
             raise ExternalAPIError("Could not extract stock tickers from question") from e
 
-        if not raw or raw == "UNKNOWN":
-            raise ExternalAPIError("Could not identify any stocks from the question")
+        upper = raw.upper()
 
-        return [t.strip() for t in raw.split(",") if t.strip()]
+        if not upper or upper == "UNKNOWN":
+            raise ExternalAPIError(
+                "Could not identify any stocks from the question. "
+                "Try using a ticker symbol directly (e.g. SPOT for Spotify, AAPL for Apple)."
+            )
+
+        if upper.startswith("SUGGEST:"):
+            parts = raw.split(":", 2)
+            ticker = parts[1].strip().upper() if len(parts) > 1 else ""
+            name = parts[2].strip() if len(parts) > 2 else ticker
+            if ticker:
+                raise ExternalAPIError(
+                    f"Did you mean **{name}** ({ticker})? "
+                    f"Try asking: \"How is {ticker} doing today?\""
+                )
+            raise ExternalAPIError(
+                "Could not identify any stocks from the question. "
+                "Try using a ticker symbol directly (e.g. AAPL for Apple)."
+            )
+
+        return [t.strip().upper() for t in raw.split(",") if t.strip()]
 
     async def generate_stock_summary(self, question: str, stock_data: dict) -> str:
         """Generate a concise financial summary for the given question and stock data.
