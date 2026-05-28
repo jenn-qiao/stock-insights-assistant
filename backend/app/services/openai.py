@@ -3,7 +3,7 @@ import logging
 from openai import AsyncOpenAI
 
 from app.config import settings
-from app.models.schemas import CompanyProfileResponse, InsightResponse, StockQuoteResponse
+from app.models.schemas import InsightResponse
 from app.utils.exceptions import ExternalAPIError
 
 logger = logging.getLogger(__name__)
@@ -111,48 +111,6 @@ class OpenAIService:
             logger.error("OpenAI API call failed: %s", e)
             raise ExternalAPIError("Failed to generate stock summary") from e
 
-    async def get_insight(
-        self,
-        symbols: list[str],
-        quotes: list[StockQuoteResponse],
-        profiles: list[CompanyProfileResponse | None],
-        question: str,
-    ) -> InsightResponse:
-        """Generate a plain-English insight for one or more stocks.
-
-        Merges quote and profile data per ticker into a single context dict,
-        then delegates to generate_stock_summary for the LLM call.
-        Profile data is optional — if unavailable for a symbol it is omitted.
-
-        Args:
-            symbols: List of ticker symbols e.g. ["AAPL", "MSFT"].
-            quotes: Corresponding live quote data from Finnhub.
-            profiles: Corresponding company profiles (None if unavailable).
-            question: Freehand question from the user.
-
-        Raises:
-            ExternalAPIError: If the OpenAI API call fails.
-        """
-        stock_data = {}
-        for symbol, quote, profile in zip(symbols, quotes, profiles):
-            stock_data[f"{symbol} Current Price"] = f"${quote.current_price:.2f}"
-            stock_data[f"{symbol} Open"] = f"${quote.open:.2f}"
-            stock_data[f"{symbol} High"] = f"${quote.high:.2f}"
-            stock_data[f"{symbol} Low"] = f"${quote.low:.2f}"
-            stock_data[f"{symbol} Previous Close"] = f"${quote.previous_close:.2f}"
-            stock_data[f"{symbol} Change"] = f"${quote.change:.2f} ({quote.percent_change:.2f}%)"
-            if profile:
-                stock_data[f"{symbol} Company Name"] = profile.name
-                stock_data[f"{symbol} Industry"] = profile.industry
-                stock_data[f"{symbol} Market Cap"] = f"${profile.market_cap:.2f}M"
-                stock_data[f"{symbol} Exchange"] = profile.exchange
-
-        summary = await self.generate_stock_summary(
-            question=question,
-            stock_data=stock_data,
-        )
-
-        return InsightResponse(symbols=symbols, summary=summary)
 
 
 openai_service = OpenAIService(api_key=settings.openai_api_key)

@@ -1,12 +1,16 @@
-import asyncio
-
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.models.schemas import CompanyProfileResponse, InsightResponse, StockQuoteResponse
-from app.services.finnhub import finnhub_service
-from app.services.openai import openai_service
+from app.services.finnhub import FinnhubService, finnhub_service
+from app.services.insight import StockInsightService
+from app.services.openai import OpenAIService, openai_service
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
+
+
+def get_insight_service() -> StockInsightService:
+    """Dependency factory — swap out finnhub/openai with mocks in tests."""
+    return StockInsightService(finnhub=finnhub_service, openai=openai_service)
 
 
 @router.get("/quote", response_model=StockQuoteResponse)
@@ -19,19 +23,9 @@ async def get_company_profile(symbol: str) -> CompanyProfileResponse:
     return await finnhub_service.get_company_profile(symbol)
 
 
-async def _safe_profile(symbol: str):
-    """Fetch a company profile, returning None if unavailable."""
-    try:
-        return await finnhub_service.get_company_profile(symbol)
-    except Exception:
-        return None
-
-
 @router.get("/insight", response_model=InsightResponse)
-async def get_stock_insight(question: str) -> InsightResponse:
-    symbols = await openai_service.extract_tickers(question)
-    quotes, profiles = await asyncio.gather(
-        asyncio.gather(*[finnhub_service.get_quote(s) for s in symbols]),
-        asyncio.gather(*[_safe_profile(s) for s in symbols]),
-    )
-    return await openai_service.get_insight(symbols, list(quotes), list(profiles), question=question)
+async def get_stock_insight(
+    question: str,
+    service: StockInsightService = Depends(get_insight_service),
+) -> InsightResponse:
+    return await service.get_insight(question)
