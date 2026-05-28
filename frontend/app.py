@@ -7,6 +7,7 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Stock Insights Assistant", page_icon="📈")
 st.title("📈 Stock Insights Assistant")
+st.markdown("<span style='color: gray; font-size: 1.1rem;'>by Jennifer Qiao</span>", unsafe_allow_html=True)
 st.caption("Ask any question about stocks or companies.")
 
 if "messages" not in st.session_state:
