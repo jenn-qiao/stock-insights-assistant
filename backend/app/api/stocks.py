@@ -19,8 +19,19 @@ async def get_company_profile(symbol: str) -> CompanyProfileResponse:
     return await finnhub_service.get_company_profile(symbol)
 
 
+async def _safe_profile(symbol: str):
+    """Fetch a company profile, returning None if unavailable."""
+    try:
+        return await finnhub_service.get_company_profile(symbol)
+    except Exception:
+        return None
+
+
 @router.get("/insight", response_model=InsightResponse)
 async def get_stock_insight(question: str) -> InsightResponse:
     symbols = await openai_service.extract_tickers(question)
-    quotes = await asyncio.gather(*[finnhub_service.get_quote(s) for s in symbols])
-    return await openai_service.get_insight(symbols, list(quotes), question=question)
+    quotes, profiles = await asyncio.gather(
+        asyncio.gather(*[finnhub_service.get_quote(s) for s in symbols]),
+        asyncio.gather(*[_safe_profile(s) for s in symbols]),
+    )
+    return await openai_service.get_insight(symbols, list(quotes), list(profiles), question=question)
