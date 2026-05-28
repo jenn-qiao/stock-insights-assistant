@@ -2,7 +2,6 @@ import logging
 
 from openai import AsyncOpenAI
 
-from app.config import settings
 from app.utils.exceptions import ExternalAPIError
 
 logger = logging.getLogger(__name__)
