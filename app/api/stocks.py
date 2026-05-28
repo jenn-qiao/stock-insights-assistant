@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter
 
 from app.models.schemas import CompanyProfileResponse, InsightResponse, StockQuoteResponse
@@ -18,6 +20,7 @@ async def get_company_profile(symbol: str) -> CompanyProfileResponse:
 
 
 @router.get("/insight", response_model=InsightResponse)
-async def get_stock_insight(symbol: str) -> InsightResponse:
-    quote = await finnhub_service.get_quote(symbol)
-    return await openai_service.get_insight(symbol, quote)
+async def get_stock_insight(question: str) -> InsightResponse:
+    symbols = await openai_service.extract_tickers(question)
+    quotes = await asyncio.gather(*[finnhub_service.get_quote(s) for s in symbols])
+    return await openai_service.get_insight(symbols, list(quotes), question=question)

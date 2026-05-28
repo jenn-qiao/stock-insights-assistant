@@ -31,7 +31,7 @@ class CompanyProfileResponse(BaseModel):
 
 
 class InsightResponse(BaseModel):
-    symbol: str
+    symbols: list[str]
     summary: str
 
 
