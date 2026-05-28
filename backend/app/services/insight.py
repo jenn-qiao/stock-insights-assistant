@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import time
 
@@ -8,36 +9,32 @@ from app.services.openai import OpenAIService
 
 logger = logging.getLogger(__name__)
 
-# Keywords that indicate the user wants historical/trend data
-HISTORICAL_KEYWORDS = {
-    "week", "weekly", "this week", "past week", "last week",
-    "month", "monthly", "this month", "past month", "last month",
-    "year", "yearly", "this year", "past year", "last year", "ytd", "year to date",
-    "yoy", "year over year", "6 month", "6-month", "3 month", "3-month",
-    "trend", "performance", "history", "historical", "over time",
-    "52 week", "52-week", "all time", "ath",
-}
 
 def _detect_period(question: str) -> tuple[int, int, str] | None:
-    """Return (from_ts, to_ts, label) if the question asks for historical data, else None."""
+    """Return (from_ts, to_ts, label) if the question asks for historical data, else None.
+
+    More specific phrases are checked before generic ones to avoid short-circuit bugs
+    (e.g. "3 month" must be matched before the plain "month" check).
+    """
     q = question.lower()
     now = int(time.time())
 
+    if any(k in q for k in ("52 week", "52-week")):
+        return now - 365 * 86400, now, "past year"
     if any(k in q for k in ("this week", "past week", "last week", "week")):
         return now - 7 * 86400, now, "past week"
-    if any(k in q for k in ("this month", "past month", "last month", "month")):
-        return now - 30 * 86400, now, "past month"
-    if any(k in q for k in ("3 month", "3-month", "three month")):
-        return now - 90 * 86400, now, "past 3 months"
     if any(k in q for k in ("6 month", "6-month", "six month")):
         return now - 180 * 86400, now, "past 6 months"
+    if any(k in q for k in ("3 month", "3-month", "three month")):
+        return now - 90 * 86400, now, "past 3 months"
+    if any(k in q for k in ("this month", "past month", "last month", "month")):
+        return now - 30 * 86400, now, "past month"
     if any(k in q for k in ("ytd", "year to date")):
-        import datetime
         jan1 = int(datetime.datetime(datetime.datetime.now().year, 1, 1).timestamp())
         return jan1, now, "year to date"
     if any(k in q for k in ("yoy", "year over year")):
         return now - 365 * 86400, now, "year over year"
-    if any(k in q for k in ("this year", "past year", "last year", "year", "52 week", "52-week", "annual")):
+    if any(k in q for k in ("this year", "past year", "last year", "year", "annual")):
         return now - 365 * 86400, now, "past year"
     if any(k in q for k in ("trend", "performance", "history", "historical", "over time")):
         return now - 90 * 86400, now, "past 3 months"
@@ -45,23 +42,14 @@ def _detect_period(question: str) -> tuple[int, int, str] | None:
 
 
 class StockInsightService:
-    """Orchestrates the full stock insight flow.
-
-    Sits between the route and the individual API clients.
-    The route calls get_insight(); this service handles everything else.
-    """
+    """Orchestrates the full stock insight flow."""
 
     def __init__(self, finnhub: FinnhubService, openai: OpenAIService):
         self.finnhub = finnhub
         self.openai = openai
 
     async def get_insight(self, question: str) -> InsightResponse:
-        """Entry point for the insight flow.
-
-        Parses the question, fetches all required data, builds the context,
-        and returns a summarised response.
-        """
-        symbols = await self._parse_query(question)
+        symbols = await self.openai.extract_tickers(question)
         period = _detect_period(question)
         quotes, profiles = await self._fetch_stock_data(symbols)
         candles = await self._fetch_candles(symbols, period) if period else {}
@@ -106,24 +94,23 @@ class StockInsightService:
                     stock_data[f"{symbol} {label} Change"] = f"{pct:+.2f}%"
                     stock_data[f"{symbol} {label} High"] = f"${period_high:.2f}"
                     stock_data[f"{symbol} {label} Low"] = f"${period_low:.2f}"
-                    stock_data[f"{symbol} {label} Data Points"] = str(len(candle.closes))
         return stock_data
 
     async def _fetch_candles(
         self, symbols: list[str], period: tuple[int, int, str]
     ) -> dict[str, CandleResponse]:
-        """Fetch daily candles for all symbols over the given period.
-
-        Failures are silently skipped — candle data is supplementary.
-        """
+        """Fetch candles for all symbols in parallel. Failures are skipped silently."""
         from_ts, to_ts, _ = period
-        results = {}
-        for symbol in symbols:
+
+        async def _safe_candles(symbol: str) -> tuple[str, CandleResponse | None]:
             try:
-                results[symbol] = await self.finnhub.get_candles(symbol, from_ts, to_ts)
+                return symbol, await self.finnhub.get_candles(symbol, from_ts, to_ts)
             except Exception:
                 logger.warning("Could not fetch candles for %s — skipping", symbol)
-        return results
+                return symbol, None
+
+        results = await asyncio.gather(*[_safe_candles(s) for s in symbols])
+        return {symbol: candle for symbol, candle in results if candle is not None}
 
     async def _parse_query(self, question: str) -> list[str]:
         """Extract ticker symbols from the user's natural language question.
@@ -136,12 +123,7 @@ class StockInsightService:
     async def _fetch_stock_data(
         self, symbols: list[str]
     ) -> tuple[list, list[CompanyProfileResponse | None]]:
-        """Fetch quotes and company profiles for all symbols in parallel.
-
-        Quotes are required — any failure raises immediately.
-        Profiles are optional — failures return None for that symbol
-        so the insight can still be generated from price data alone.
-        """
+        """Fetch quotes (required) and profiles (optional) for all symbols in parallel."""
         quotes, profiles = await asyncio.gather(
             asyncio.gather(*[self.finnhub.get_quote(s) for s in symbols]),
             asyncio.gather(*[self._safe_profile(s) for s in symbols]),
@@ -149,12 +131,7 @@ class StockInsightService:
         return list(quotes), list(profiles)
 
     async def _safe_profile(self, symbol: str) -> CompanyProfileResponse | None:
-        """Fetch a company profile, returning None on any failure.
-
-        Keeps _fetch_stock_data fault-tolerant — a missing profile does
-        not prevent the quote data from reaching the summarisation step.
-        Testable by mocking FinnhubService.get_company_profile to raise.
-        """
+        """Fetch a company profile, returning None on any failure."""
         try:
             return await self.finnhub.get_company_profile(symbol)
         except Exception:

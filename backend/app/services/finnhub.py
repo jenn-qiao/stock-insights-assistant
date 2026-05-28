@@ -1,10 +1,8 @@
 import logging
+import time
 
 import httpx
 
-import time
-
-from app.config import settings
 from app.models.schemas import CandleResponse, CompanyProfileResponse, StockQuoteResponse
 from app.utils.exceptions import ExternalAPIError, StockNotFoundError
 
@@ -36,23 +34,6 @@ MOCK_PROFILE = CompanyProfileResponse(
 )
 
 
-# Forex pairs routed to OANDA feed on Finnhub (symbol format: OANDA:<BASE>_<QUOTE>)
-FOREX_PAIRS = {
-    "EURUSD": "OANDA:EUR_USD", "GBPUSD": "OANDA:GBP_USD", "USDJPY": "OANDA:USD_JPY",
-    "USDCHF": "OANDA:USD_CHF", "AUDUSD": "OANDA:AUD_USD", "USDCAD": "OANDA:USD_CAD",
-    "NZDUSD": "OANDA:NZD_USD", "EURGBP": "OANDA:EUR_GBP", "EURJPY": "OANDA:EUR_JPY",
-    "GBPJPY": "OANDA:GBP_JPY", "USDCNY": "OANDA:USD_CNY", "USDINR": "OANDA:USD_INR",
-    "USDMXN": "OANDA:USD_MXN", "USDBRL": "OANDA:USD_BRL", "USDKRW": "OANDA:USD_KRW",
-    "USDSGD": "OANDA:USD_SGD", "USDHKD": "OANDA:USD_HKD", "USDSEK": "OANDA:USD_SEK",
-    "USDNOK": "OANDA:USD_NOK", "USDDKK": "OANDA:USD_DKK",
-}
-
-# Crypto tickers that should be routed to Binance feed on Finnhub
-CRYPTO_TICKERS = {
-    "BTC", "ETH", "SOL", "DOGE", "XRP", "ADA", "AVAX", "MATIC", "DOT",
-    "LTC", "LINK", "UNI", "SHIB", "TRX", "ATOM", "XLM", "ALGO", "VET",
-}
-
 # International exchange prefixes for known tickers
 INTERNATIONAL_TICKERS = {
     # UK (LSE)
@@ -74,16 +55,10 @@ INTERNATIONAL_TICKERS = {
 def normalise_symbol(symbol: str) -> str:
     """Convert a raw ticker to the Finnhub-compatible symbol format.
 
-    - Forex pairs become OANDA:<BASE>_<QUOTE> (e.g. EURUSD -> OANDA:EUR_USD)
-    - Crypto tickers become BINANCE:<TICKER>USDT (e.g. BTC -> BINANCE:BTCUSDT)
     - Known international tickers get their exchange prefix (e.g. VOD -> LSE:VOD)
     - Everything else is passed through unchanged (US stocks, ETFs)
     """
-    upper = symbol.upper().replace("/", "").replace("-", "").replace("_", "")
-    if upper in FOREX_PAIRS:
-        return FOREX_PAIRS[upper]
-    if upper in CRYPTO_TICKERS:
-        return f"BINANCE:{upper}USDT"
+    upper = symbol.upper()
     if upper in INTERNATIONAL_TICKERS:
         return INTERNATIONAL_TICKERS[upper]
     return upper
@@ -104,7 +79,7 @@ class FinnhubService:
             StockNotFoundError: If the symbol is unknown (Finnhub returns all zeros).
             ExternalAPIError: On timeout, HTTP error, or network failure.
         """
-        if not settings.finnhub_api_key:
+        if not self.api_key:
             logger.warning("No Finnhub key found, using mock data")
             return MOCK_QUOTE.model_copy(update={"symbol": symbol})
 
@@ -127,7 +102,7 @@ class FinnhubService:
             StockNotFoundError: If the symbol is unknown (Finnhub returns empty dict).
             ExternalAPIError: On timeout, HTTP error, or network failure.
         """
-        if not settings.finnhub_api_key:
+        if not self.api_key:
             logger.warning("No Finnhub key found, using mock data")
             return MOCK_PROFILE.model_copy(update={"ticker": symbol})
 
@@ -139,24 +114,9 @@ class FinnhubService:
 
         return CompanyProfileResponse.model_validate(data)
 
-    #For trends over time, e.g. "How has AAPL performed over the last month?"
     async def get_candles(self, symbol: str, from_ts: int, to_ts: int, resolution: str = "D") -> CandleResponse:
-        """Fetch historical OHLC candles for a symbol over a date range.
-
-        Args:
-            symbol: Ticker symbol (will be normalised).
-            from_ts: Start of range as a Unix timestamp.
-            to_ts: End of range as a Unix timestamp.
-            resolution: Candle resolution — D (daily), W (weekly), M (monthly).
-
-        Returns:
-            CandleResponse with lists of OHLC values and timestamps.
-
-        Raises:
-            StockNotFoundError: If Finnhub returns no data.
-            ExternalAPIError: On network or HTTP failure.
-        """
-        if not settings.finnhub_api_key:
+        """Fetch historical OHLC candles for a symbol between two Unix timestamps."""
+        if not self.api_key:
             logger.warning("No Finnhub key found, using mock candle data")
             now = int(time.time())
             return CandleResponse(
@@ -208,5 +168,3 @@ class FinnhubService:
             ) from e
         except httpx.RequestError as e:
             raise ExternalAPIError(f"Could not reach Finnhub: {e}") from e
-
-

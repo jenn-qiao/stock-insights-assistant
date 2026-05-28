@@ -65,8 +65,14 @@ def _render_assistant_reply(question: str) -> None:
                 st.session_state.messages.append({"role": "assistant", "content": msg})
             except httpx.HTTPStatusError as e:
                 detail = e.response.json().get("detail", "Unknown error")
-                msg = f"Error: {detail}"
-                st.error(msg)
+                if "Could not identify" in detail or "UNKNOWN" in detail:
+                    msg = (
+                        "I need a specific stock to look up. "
+                        "Try: \"How is Apple doing?\" or \"Compare TSLA and F\"."
+                    )
+                else:
+                    msg = f"Error: {detail}"
+                st.warning(msg)
                 st.session_state.messages.append({"role": "assistant", "content": msg})
             except httpx.ConnectError:
                 msg = "Could not connect to the backend. Is the server running?"

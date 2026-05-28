@@ -34,10 +34,6 @@ For historical/trend questions (week, month, year, YTD, YoY etc.):
 - Follow with bullet points: period high, period low, start price, end price.
 - End with one factual sentence describing the trend direction based solely on the data (e.g. "The stock declined steadily over the period, hitting its low in week 3.").
 
-For forex/crypto:
-- Open with one sentence stating the current rate/price and percent change.
-- Follow with day range and any other available metrics as bullets.
-
 General:
 - Always include currency symbols, units, and timeframe (e.g. “today”, “intraday”).
 - Repeat all numbers exactly as given — never round or estimate.
@@ -52,18 +48,18 @@ class OpenAIService:
     def __init__(self, api_key: str | None):
         self.client = AsyncOpenAI(api_key=api_key) if api_key else None
 
+    def _require_client(self) -> None:
+        """Raise a clear error if no API key was configured."""
+        if self.client is None:
+            raise ExternalAPIError("OpenAI API key is not configured.")
+
     async def extract_tickers(self, question: str) -> list[str]:
-        """Extract all stock ticker symbols from a natural language question.
+        """Extract stock ticker symbols from a natural language question.
 
-        Args:
-            question: A freehand question mentioning one or more companies.
-
-        Returns:
-            A list of uppercase ticker symbols e.g. ["AAPL", "MSFT"].
-
-        Raises:
-            ExternalAPIError: If no tickers can be identified or the API call fails.
+        Returns uppercase tickers e.g. ["AAPL", "MSFT"].
+        Raises ExternalAPIError if nothing can be identified or the API call fails.
         """
+        self._require_client()
         try:
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -78,10 +74,8 @@ class OpenAIService:
                             "3. Ticker symbols are case-insensitive. If the user types 'aapl', 'AAPL', or 'Aapl', treat them all as the ticker AAPL. Resolve directly without asking.\n"
                             "4. If the input looks like a ticker (1–5 letters, no spaces) but could also be a word or company name, prefer interpreting it as a ticker first. Only use SUGGEST if it genuinely could be either and you are not confident.\n"
                             "5. Known mappings (non-exhaustive):\n"
-                            "   Stocks: Apple->AAPL, Google/Alphabet->GOOGL, Microsoft->MSFT, Amazon->AMZN, Tesla->TSLA, Meta/Facebook->META, Nvidia->NVDA, Netflix->NFLX, Spotify->SPOT, Ford->F, AMD->AMD, Palantir->PLTR, IonQ->IONQ, Uber->UBER, Airbnb->ABNB, Coinbase->COIN, Square/Block->XYZ, Shopify->SHOP, Visa->V, Mastercard->MA, JPMorgan->JPM, Goldman Sachs->GS, Disney->DIS, Nike->NKE, Starbucks->SBUX, Salesforce->CRM, Oracle->ORCL, Intel->INTC, Qualcomm->QCOM, PayPal->PYPL, Snap->SNAP, Twitter/X->X, Robinhood->HOOD, DoorDash->DASH, Lyft->LYFT, Rivian->RIVN, Lucid->LCID.\n"
+                            "   Stocks: Apple->AAPL, Google/Alphabet->GOOGL, Microsoft->MSFT, Amazon->AMZN, Tesla->TSLA, Meta/Facebook->META, Nvidia->NVDA, Netflix->NFLX, Spotify->SPOT, Ford->F, AMD->AMD, Palantir->PLTR, IonQ->IONQ, Uber->UBER, Airbnb->ABNB, Coinbase->COIN, Square/Block->XYZ, Shopify->SHOP, Visa->V, Mastercard->MA, JPMorgan->JPM, Goldman Sachs->GS, Disney->DIS, Nike->NKE, Starbucks->SBUX, Salesforce->CRM, Oracle->ORCL, Intel->INTC, Qualcomm->QCOM, PayPal->PYPL, Snap->SNAP, Robinhood->HOOD, DoorDash->DASH, Lyft->LYFT, Rivian->RIVN, Lucid->LCID.\n"
                             "   ETFs/Indices: S&P 500/SPDR/SPY->SPY, Nasdaq/QQQ->QQQ, Dow Jones/DIA->DIA, Russell 2000/IWM->IWM, VIX/volatility index->VIX, Total market/VTI->VTI, Emerging markets/EEM->EEM, Gold/GLD->GLD, Oil/USO->USO, ARK Innovation/ARKK->ARKK.\n"
-                            "   Forex (return as 6-letter pair, no slash): Euro/Dollar/EUR/USD->EURUSD, Pound/Dollar/GBP/USD->GBPUSD, Dollar/Yen/USD/JPY->USDJPY, Dollar/Swiss/USD/CHF->USDCHF, Aussie/AUD/USD->AUDUSD, Dollar/CAD->USDCAD, Kiwi/NZD/USD->NZDUSD, EUR/GBP->EURGBP, EUR/JPY->EURJPY, GBP/JPY->GBPJPY, Dollar/Yuan->USDCNY, Dollar/Rupee->USDINR, Dollar/Peso->USDMXN, Dollar/Real->USDBRL, Dollar/Won->USDKRW, Dollar/Singapore->USDSGD, Dollar/HKD->USDHKD.\n"
-                            "   Crypto: Bitcoin->BTC, Ethereum/Ether->ETH, Solana->SOL, Dogecoin/Doge->DOGE, XRP/Ripple->XRP, Cardano->ADA, Avalanche->AVAX, Polygon/Matic->MATIC, Polkadot->DOT, Litecoin->LTC, Chainlink->LINK, Uniswap->UNI, Shiba Inu/Shib->SHIB, Tron->TRX, Cosmos->ATOM, Stellar->XLM.\n"
                             "   International stocks (return the raw ticker without exchange prefix — the backend handles routing): Vodafone->VOD, HSBC->HSBA, BP->BP, Shell->SHEL, AstraZeneca->AZN, GSK->GSK, Rio Tinto->RIO, BHP->BHP, SAP->SAP, Siemens->SIE, BMW->BMW, Volkswagen->VOW3, Bayer->BAYN, Deutsche Telekom->DTE, Toyota->7203, Sony->6758, SoftBank->9984, Tencent->0700, Alibaba HK->9988.\n"
                             "6. If confident (including after fuzzy/typo matching), return a comma-separated list of tickers in uppercase (e.g. AAPL,MSFT).\n"
                             "7. If you think you know the company but want to confirm due to an unusual spelling, return: SUGGEST:<TICKER>:<company name as the user wrote it>  (e.g. SUGGEST:AAPL:appple)\n"
@@ -123,21 +117,8 @@ class OpenAIService:
         return [t.strip().upper() for t in raw.split(",") if t.strip()]
 
     async def generate_stock_summary(self, question: str, stock_data: dict) -> str:
-        """Generate a concise financial summary for the given question and stock data.
-
-        This is a reusable method — stock_data can be any dict of metrics,
-        making it easy to extend for comparisons or portfolio summaries.
-
-        Args:
-            question: Natural language question about the stock(s).
-            stock_data: Key/value pairs of stock metrics to include as context.
-
-        Returns:
-            A plain text summary from the model.
-
-        Raises:
-            ExternalAPIError: If the OpenAI API call fails.
-        """
+        """Generate a plain-text summary from structured stock data and the user's question."""
+        self._require_client()
         formatted_data = "\n".join(f"  {k}: {v}" for k, v in stock_data.items())
         user_message = f"Stock data:\n{formatted_data}\n\nQuestion: {question}"
 
@@ -155,7 +136,4 @@ class OpenAIService:
         except Exception as e:
             logger.error("OpenAI API call failed: %s", e)
             raise ExternalAPIError("Failed to generate stock summary") from e
-
-
-
 

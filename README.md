@@ -1,23 +1,19 @@
 # Stock Insights Assistant
 
-AI-powered stock analysis application built with FastAPI, Finnhub, and OpenAI.
+Ask natural language questions about stocks, ETFs, crypto, forex, and international markets — and get AI-powered, data-backed summaries in plain English.
 
-Ask natural language questions about stocks, ETFs, crypto, forex, and international markets — and get intelligent, data-backed summaries powered by real-time financial data and GPT-4o-mini.
+Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 
 ---
 
 ## Features
 
-- Natural language stock queries with typo tolerance and fuzzy matching
-- Real-time quotes via Finnhub (US stocks, ETFs, indices, crypto, forex, international)
-- Historical price data and trend analysis (week, month, 3M, 6M, YTD, YoY, 52-week)
-- Multi-stock comparison support
-- "Did you mean...?" suggestions for ambiguous or misspelled tickers
+- Real-time quotes — US stocks, ETFs, indices, crypto, forex, international markets
+- Historical trend analysis — week, month, 3M, 6M, YTD, YoY, 52-week
+- Multi-stock comparisons
+- Typo tolerance and fuzzy company name matching
+- "Did you mean...?" suggestions for ambiguous tickers
 - Sidebar with randomised example questions
-- FastAPI backend with modular, layered architecture
-- Streamlit chat-style frontend
-- Async HTTP with `httpx`, structured schemas with Pydantic
-- Graceful error handling throughout
 
 ---
 
@@ -28,9 +24,8 @@ Ask natural language questions about stocks, ETFs, crypto, forex, and internatio
 | "How is Apple doing today?" | Real-time quote + company profile |
 | "Compare Tesla and Ford" | Side-by-side stats |
 | "How has NVDA performed this year?" | 365-day historical candles |
-| "What's EUR/USD at?" | Forex via OANDA feed |
-| "How is Bitcoin doing?" | Crypto via Binance feed |
 | "How is Vodafone performing?" | UK stock via LSE feed |
+| "How is Toyota doing?" | Japanese stock via TSE feed |
 | "appple stock" | Typo-corrected to AAPL |
 
 ---
@@ -54,8 +49,8 @@ Ask natural language questions about stocks, ETFs, crypto, forex, and internatio
 ```text
 backend/
 ├── app/
-│   ├── api/           # Route handlers (thin — HTTP transport only)
-│   ├── services/      # Business logic + external API clients
+│   ├── api/           # Route handlers (HTTP transport only)
+│   ├── services/
 │   │   ├── finnhub.py   # Finnhub client + symbol normaliser
 │   │   ├── openai.py    # Ticker extraction + summary generation
 │   │   └── insight.py   # Orchestration layer
@@ -63,53 +58,46 @@ backend/
 │   ├── utils/         # Custom exceptions
 │   ├── config.py      # Environment variable loading
 │   └── main.py        # FastAPI entry point
-├── tests/             # Unit tests (mocked API clients)
+├── tests/
 ├── Dockerfile
 └── requirements.txt
 
 frontend/
-├── app.py             # Streamlit chat UI with sidebar
+├── app.py             # Streamlit chat UI
 ├── Dockerfile
 └── requirements.txt
-
-docker-compose.yml
-.env.example
 ```
 
 ---
 
-## Prerequisites
+## Setup
 
-- Python 3.11+
-- Docker + Docker Compose (recommended)
+### Prerequisites
+
+- Docker + Docker Compose
 - Finnhub API key — [finnhub.io](https://finnhub.io)
 - OpenAI API key — [platform.openai.com](https://platform.openai.com)
 
----
-
-## Environment Variables
+### Environment variables
 
 ```bash
 cp .env.example .env
-```
-
-```env
-FINNHUB_API_KEY=your_finnhub_key
-OPENAI_API_KEY=your_openai_key
+# Fill in FINNHUB_API_KEY and OPENAI_API_KEY
 ```
 
 ---
 
 ## Running the App
 
-### With Docker (recommended)
-
 ```bash
-# First time or after any code changes
+# First run or after code changes
 docker compose up --build
 
 # Subsequent runs
 docker compose up
+
+# Rebuild backend only
+docker compose up --build backend
 ```
 
 | Service | URL |
@@ -118,92 +106,94 @@ docker compose up
 | Backend API | http://localhost:8000 |
 | Swagger docs | http://localhost:8000/docs |
 
-> **Tip:** To rebuild only the backend: `docker compose up --build backend`
-
 ### Without Docker
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
 
-# Terminal 1 — backend
+# Terminal 1
 cd backend && uvicorn app.main:app --reload
 
-# Terminal 2 — frontend
+# Terminal 2
 cd frontend && streamlit run app.py
 ```
 
 ---
 
-## Running Tests
+## Tests
 
 ```bash
-# Locally
-cd backend && pytest
-
-# In Docker
 docker compose run --rm backend pytest
+
+# Verbose
+docker compose run --rm backend pytest -v
 ```
 
 Tests use mocked API clients — no real API keys required.
 
 ---
 
+## Linting
+
+```bash
+# Check
+docker compose run --rm backend ruff check app/
+
+# Auto-fix
+docker compose run --rm backend ruff check app/ --fix
+```
+
+---
+
 ## Architecture
 
-The backend follows a strict layered architecture. Each layer has a single responsibility and is independently testable.
+The backend uses a strict layered architecture — each layer has one responsibility and is independently testable.
 
 ```
 User question
      │
      ▼
- FastAPI Route          ← HTTP transport only, no logic
+ FastAPI Route              ← HTTP transport only
      │
      ▼
- StockInsightService    ← Orchestration: coordinates all steps
-     ├── OpenAIService.extract_tickers()     ← NLP: question → ticker list
-     ├── FinnhubService.get_quote()          ← Real-time price data
-     ├── FinnhubService.get_company_profile()← Company metadata
-     ├── FinnhubService.get_candles()        ← Historical OHLC (if period detected)
-     └── OpenAIService.generate_summary()    ← LLM summary from structured data
+ StockInsightService        ← Orchestrates all steps
+     ├── OpenAIService.extract_tickers()      ← question → ticker list
+     ├── FinnhubService.get_quote()           ← real-time price
+     ├── FinnhubService.get_company_profile() ← company metadata
+     ├── FinnhubService.get_candles()         ← historical OHLC (if period detected)
+     └── OpenAIService.generate_summary()     ← LLM summary from structured data
 ```
 
-**Symbol normalisation** happens in `FinnhubService.normalise_symbol()` before any API call. US tickers pass through unchanged; crypto becomes `BINANCE:<TICKER>USDT`; forex becomes `OANDA:<BASE>_<QUOTE>`; international stocks get their exchange prefix (e.g. `LSE:VOD`).
+**Symbol normalisation** — `normalise_symbol()` in `finnhub.py` routes each ticker to the correct feed before any API call. US tickers pass through unchanged; crypto → `BINANCE:<TICKER>USDT`; forex → `OANDA:<BASE>_<QUOTE>`; international stocks get their exchange prefix (e.g. `LSE:VOD`).
 
-**Ticker extraction** uses a dedicated GPT-4o-mini call with a structured prompt that handles company names, typos, slang, case variations, and multiple asset classes before the main summary call.
+**Ticker extraction** — a dedicated GPT-4o-mini call resolves company names, typos, case variations, and multiple asset classes into ticker symbols before the summary call.
 
 ---
 
 ## Trade-offs & Decisions
 
-**Two-call OpenAI approach** — Ticker extraction and summary generation are separate API calls. This keeps each prompt focused and makes the extraction step independently testable. The cost trade-off (two calls vs one) is acceptable given the improved reliability and clarity of intent.
+**Two-call OpenAI approach** — Ticker extraction and summary generation are separate calls. Each prompt stays focused and the extraction step is independently testable. The added latency is acceptable given the reliability improvement.
 
-**Symbol normaliser over a database** — Rather than maintaining a ticker lookup database, asset class routing (crypto, forex, international) is handled by in-memory lookup tables in `finnhub.py`. This is fast and zero-dependency, though it requires manual updates for new markets.
+**In-memory symbol normaliser** — Asset class routing is handled by lookup tables in `finnhub.py` rather than a ticker database. Fast and zero-dependency, but requires manual updates for new markets.
 
-**Candle data is supplementary** — Historical candle failures are silently skipped (`_fetch_candles` never raises). The insight can always be generated from the real-time quote alone, so a Finnhub candle API failure doesn't break the user's query.
+**Candle failures are silent** — Historical candle errors are skipped gracefully. The insight is always generated from the real-time quote, so a candle API failure never breaks a user query.
 
-**Streamlit for the frontend** — Chosen for rapid development. The trade-off is limited UI customisation (e.g. sidebar button behaviour requires `st.rerun()` workarounds) compared to a React frontend.
+**Streamlit frontend** — Chosen for speed of development. The trade-off is limited UI control (e.g. sidebar buttons require `st.rerun()` workarounds) vs a React frontend.
 
 ---
 
 ## What I'd Improve With More Time
 
-- **Charts** — render a price chart in the UI using the candle data already being fetched
-- **Streaming responses** — stream the OpenAI summary token-by-token for a better UX
-- **Caching** — cache quotes for 15–30 seconds to avoid redundant Finnhub calls on repeated queries
+- **Charts** — render a price chart from the candle data already being fetched
+- **Streaming** — stream the OpenAI summary token-by-token for snappier UX
+- **Caching** — cache quotes for 15–30s to avoid duplicate Finnhub calls
 - **More historical resolutions** — weekly/monthly candles for multi-year views
-- **Portfolio mode** — allow users to track a watchlist across sessions
-- **Better international coverage** — expand the exchange prefix table or integrate a ticker search API
+- **Portfolio mode** — let users save and track a watchlist across sessions
+- **Broader international coverage** — integrate a ticker search API instead of a static table
 
 ---
 
 ## AI Tools Used
 
-**GitHub Copilot / Claude** was used throughout development to:
-- Scaffold the initial FastAPI and Streamlit boilerplate
-- Draft and iterate on the OpenAI system prompts (ticker extraction and summary formatting)
-- Debug Docker networking issues and Finnhub symbol format edge cases
-- Suggest the two-call OpenAI architecture and the `normalise_symbol` abstraction
-- Write and refine this README
-
-All generated code was reviewed, tested, and adapted to fit the project's architecture and requirements.
+Claude was used throughout to scaffold boilerplate, iterate on OpenAI prompts, debug Docker and Finnhub edge cases, and suggest architectural patterns like the two-call approach and `normalise_symbol`. All output was reviewed, tested, and adapted to fit the project.

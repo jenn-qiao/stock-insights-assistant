@@ -6,6 +6,8 @@ class HealthResponse(BaseModel):
 
 
 class StockQuoteResponse(BaseModel):
+    """Maps Finnhub's single-letter quote fields to readable names."""
+
     symbol: str
     current_price: float = Field(alias="c")
     high: float = Field(alias="h")
@@ -19,11 +21,13 @@ class StockQuoteResponse(BaseModel):
 
 
 class CompanyProfileResponse(BaseModel):
+    """Maps Finnhub's camelCase profile fields to readable names."""
+
     name: str
     ticker: str
     exchange: str
     industry: str = Field(alias="finnhubIndustry")
-    market_cap: float = Field(alias="marketCapitalization")
+    market_cap: float = Field(alias="marketCapitalization")  # in millions USD
     logo: str
     weburl: str
 
@@ -31,12 +35,14 @@ class CompanyProfileResponse(BaseModel):
 
 
 class CandleResponse(BaseModel):
+    """OHLC candle data for a symbol over a date range, used for historical trend queries."""
+
     symbol: str
     opens: list[float]
     closes: list[float]
     highs: list[float]
     lows: list[float]
-    timestamps: list[int]
+    timestamps: list[int]  # Unix timestamps, one per candle
 
 
 class InsightResponse(BaseModel):
@@ -44,5 +50,3 @@ class InsightResponse(BaseModel):
     summary: str
 
 
-class ErrorResponse(BaseModel):
-    detail: str
