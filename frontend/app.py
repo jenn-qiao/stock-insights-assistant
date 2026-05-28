@@ -87,39 +87,6 @@ st.markdown(
         border-radius: 4px;
         font-size: 0.75rem;
     }
-    .main .block-container {
-        padding-bottom: 6rem;
-    }
-    [data-testid="stForm"] {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        z-index: 999;
-        background: #ffffff;
-        border-top: 1px solid #e5e7eb;
-        padding: 0.75rem 1.5rem 1.25rem;
-        margin: 0;
-        max-width: 100%;
-    }
-    [data-testid="stForm"] input {
-        background-color: #f3f4f6 !important;
-        border: 1px solid #e5e7eb !important;
-        border-radius: 24px !important;
-        padding: 0.75rem 1.25rem !important;
-        font-size: 1rem !important;
-    }
-    [data-testid="stForm"] button[kind="secondaryFormSubmit"] {
-        background-color: #e5e7eb !important;
-        border: none !important;
-        border-radius: 8px !important;
-        color: #374151 !important;
-        font-size: 1.1rem !important;
-        min-height: 2.75rem;
-    }
-    [data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover {
-        background-color: #d1d5db !important;
-    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -136,50 +103,68 @@ if "chat_query" not in st.session_state:
     st.session_state.chat_query = ""
 
 
-def handle_question(prompt: str) -> None:
+def process_question(prompt: str) -> None:
+    """Fetch insight and append to session history (no extra widgets)."""
+    prompt = prompt.strip()
+    if not prompt:
+        return
+
     st.session_state.chat_query = prompt
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    with st.chat_message("user"):
-        st.write(prompt)
+    try:
+        response = httpx.get(
+            f"{BACKEND_URL}/stocks/insight",
+            params={"question": prompt},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": data["summary"],
+                "symbols": data.get("symbols", []),
+            }
+        )
+    except httpx.TimeoutException:
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Request timed out — the backend took too long to respond.",
+            }
+        )
+    except httpx.HTTPStatusError as e:
+        detail = e.response.json().get("detail", "Unknown error")
+        st.session_state.messages.append(
+            {"role": "assistant", "content": f"Error: {detail}"}
+        )
+    except httpx.ConnectError:
+        st.session_state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Could not connect to the backend. Is the server running?",
+            }
+        )
 
-    with st.chat_message("assistant"):
-        with st.spinner("Fetching data..."):
-            try:
-                response = httpx.get(
-                    f"{BACKEND_URL}/stocks/insight",
-                    params={"question": prompt},
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                data = response.json()
-                summary = data["summary"]
-                symbols = data.get("symbols", [])
 
-                st.write(summary)
-                if symbols:
-                    st.caption(f"Stocks analysed: {', '.join(symbols)}")
+def queue_question(prompt: str) -> None:
+    st.session_state.chat_query = prompt
+    st.session_state.run_query = prompt
+    st.rerun()
 
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": summary, "symbols": symbols}
-                )
 
-            except httpx.TimeoutException:
-                st.error("Request timed out — the backend took too long to respond.")
-            except httpx.HTTPStatusError as e:
-                detail = e.response.json().get("detail", "Unknown error")
-                st.error(f"Error: {detail}")
-            except httpx.ConnectError:
-                st.error("Could not connect to the backend. Is the server running?")
+# --- Process queued questions first (before any chat UI) ---
+if run_prompt := st.session_state.pop("run_query", None):
+    with st.spinner("Fetching data..."):
+        process_question(run_prompt)
 
 
 with st.sidebar:
     st.markdown("## Example questions")
     for i, question in enumerate(st.session_state.example_questions):
         if st.button(question, key=f"example_{i}", use_container_width=True):
-            st.session_state.chat_query = question
-            st.session_state.submit_prompt = question
-            st.rerun()
+            queue_question(question)
 
     st.markdown(
         '<p class="sidebar-note">Demo data — replace API keys in '
@@ -196,13 +181,19 @@ if DEMO_MODE:
         "`.env` and set `DEMO_MODE=false` when ready."
     )
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
-        if message.get("symbols"):
-            st.caption(f"Stocks analysed: {', '.join(message['symbols'])}")
+chat_history = st.container(height=520, border=False)
+with chat_history:
+    if not st.session_state.messages:
+        st.caption("Ask a question below or pick an example on the left.")
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            if message.get("symbols"):
+                st.caption(f"Stocks analysed: {', '.join(message['symbols'])}")
 
-with st.form("chat_bar", clear_on_submit=False, border=False):
+
+def render_search_bar() -> None:
+    """Pinned search bar — must stay the last UI on the page."""
     input_col, send_col = st.columns([12, 1])
     with input_col:
         st.text_input(
@@ -212,11 +203,15 @@ with st.form("chat_bar", clear_on_submit=False, border=False):
             placeholder="Ask about stocks...",
         )
     with send_col:
-        submitted = st.form_submit_button("↑", use_container_width=True)
+        if st.button("↑", key="send_query", use_container_width=True):
+            if st.session_state.chat_query.strip():
+                queue_question(st.session_state.chat_query)
 
-prompt_to_run = st.session_state.pop("submit_prompt", None)
-if prompt_to_run is None and submitted:
-    prompt_to_run = st.session_state.chat_query.strip() or None
 
-if prompt_to_run:
-    handle_question(prompt_to_run)
+# Pinned bottom bar when supported; otherwise native chat_input (pins to bottom).
+if hasattr(st, "bottom"):
+    with st.bottom():
+        render_search_bar()
+else:
+    if chat_prompt := st.chat_input("Ask about stocks..."):
+        queue_question(chat_prompt)
