@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 
-from app.models.schemas import CandleResponse, CompanyProfileResponse, InsightResponse, StockQuoteResponse
+from app.models.schemas import CandleResponse, CompanyProfileResponse, InsightResponse
 from app.services.finnhub import FinnhubService
 from app.services.openai import OpenAIService
 

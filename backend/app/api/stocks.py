@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 
 from app.models.schemas import CompanyProfileResponse, InsightResponse, StockQuoteResponse
-from app.services.finnhub import FinnhubService, finnhub_service
+from app.services.finnhub import finnhub_service
 from app.services.insight import StockInsightService
-from app.services.openai import OpenAIService, openai_service
+from app.services.openai import openai_service
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
