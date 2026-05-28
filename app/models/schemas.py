@@ -12,6 +12,20 @@ class StockQuoteResponse(BaseModel):
     low: float = Field(alias="l")
     open: float = Field(alias="o")
     previous_close: float = Field(alias="pc")
+    change: float = Field(alias="d")
+    percent_change: float = Field(alias="dp")
+
+    model_config = {"populate_by_name": True}
+
+
+class CompanyProfileResponse(BaseModel):
+    name: str
+    ticker: str
+    exchange: str
+    industry: str = Field(alias="finnhubIndustry")
+    market_cap: float = Field(alias="marketCapitalization")
+    logo: str
+    weburl: str
 
     model_config = {"populate_by_name": True}
 
