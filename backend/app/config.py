@@ -7,8 +7,8 @@ ENV_FILE = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 class Settings(BaseSettings):
-    finnhub_api_key: str
-    openai_api_key: str
+    finnhub_api_key: str | None = None
+    openai_api_key: str | None = None
 
     model_config = {"env_file": str(ENV_FILE)}
 
