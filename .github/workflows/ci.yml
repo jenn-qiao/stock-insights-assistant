@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  ci:
+    name: Lint and Test
     runs-on: ubuntu-latest
 
     steps:
@@ -29,5 +30,13 @@ jobs:
         working-directory: backend
         run: pytest
 
-      - name: Docker build verification
+  cd:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build deployable Docker images
         run: docker compose build
