@@ -12,6 +12,7 @@ Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 - Historical trend analysis — week, month, year
 - P/E ratio and company profile data
 - Multi-stock comparisons
+- Top gainers and losers by sector — tech, finance, healthcare, energy, retail, consumer, crypto
 - Typo tolerance and fuzzy company name matching
 - "Did you mean...?" suggestions for ambiguous tickers
 - Sidebar with randomised example questions
@@ -45,6 +46,12 @@ Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 ---
 
 ## Project Structure
+
+The backend follows a layered architecture. The API layer handles HTTP routing only and delegates all logic to the service layer. `StockInsightService` orchestrates each request — extracting tickers via OpenAI, fetching market data from Finnhub, and generating a plain-English summary. The Finnhub and OpenAI clients are separate services injected at startup, which makes them easy to mock in tests.
+
+The frontend is a single Streamlit file that sends questions to the backend and renders the response as a chat message. It has no direct knowledge of Finnhub or OpenAI — all data fetching and AI logic lives in the backend.
+
+Each layer has one clear responsibility, which makes the codebase easy to follow and extend. Adding a new data source means touching only the service layer. Swapping the frontend wouldn't require any changes to the backend. Tests can run against the service layer directly using mocked clients, without needing real API keys or a running server.
 
 ```text
 backend/
