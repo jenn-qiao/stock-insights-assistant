@@ -28,6 +28,8 @@ Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 | "How has NVDA performed this year?" | Historical price data |
 | "What is Amazon's P/E ratio?" | Fundamental metrics |
 | "appple stock" | Typo-corrected to AAPL |
+| "What are the top gainers in tech?" | Sector scan — ranked by % change |
+| "Top losers in finance today?" | Sector scan — bottom 5 by % change |
 
 ---
 
@@ -39,7 +41,7 @@ Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 | Frontend | Streamlit |
 | AI | OpenAI API (gpt-4o-mini) |
 | Market Data | Finnhub API |
-| HTTP Client | httpx (async) |
+| HTTP Client | httpx |
 | Validation | Pydantic v2 |
 | Containerisation | Docker + Docker Compose |
 
@@ -52,6 +54,20 @@ The backend follows a layered architecture. The API layer handles HTTP routing o
 The frontend is a single Streamlit file that sends questions to the backend and renders the response as a chat message. It has no direct knowledge of Finnhub or OpenAI — all data fetching and AI logic lives in the backend.
 
 Each layer has one clear responsibility, which makes the codebase easy to follow and extend. Adding a new data source means touching only the service layer. Swapping the frontend wouldn't require any changes to the backend. Tests can run against the service layer directly using mocked clients, without needing real API keys or a running server.
+
+**Request flow:** The user types a question in the Streamlit UI, which sends it to the FastAPI backend. The API route passes it to `StockInsightService`, which first calls OpenAI to extract the ticker symbol(s) from the question. It then fetches the relevant data from Finnhub — quote, company profile, P/E ratio, and historical candles if a time period was mentioned. That data is passed back to OpenAI to generate a plain-English summary, which is returned to the frontend and displayed in the chat.
+
+```
+User asks a question
+        ↓
+Backend fetches stock data from Finnhub
+        ↓
+Backend sends question + data to OpenAI
+        ↓
+OpenAI generates a plain-English summary
+        ↓
+App displays the response
+```
 
 ```text
 backend/
@@ -73,6 +89,24 @@ frontend/
 ├── app.py             # Streamlit chat UI
 ├── Dockerfile
 └── requirements.txt
+```
+
+**Service layer detail:**
+
+```
+User question
+     │
+     ▼
+ FastAPI Route              ← HTTP transport only
+     │
+     ▼
+ StockInsightService        ← Orchestrates all steps
+     ├── OpenAIService.extract_tickers()      ← question → ticker list
+     ├── FinnhubService.get_quote()           ← real-time price
+     ├── FinnhubService.get_company_profile() ← company metadata
+     ├── FinnhubService.get_pe_ratio()        ← P/E ratio
+     ├── FinnhubService.get_candles()         ← historical data (if period detected)
+     └── OpenAIService.generate_summary()     ← LLM summary from structured data
 ```
 
 ---
@@ -180,28 +214,6 @@ docker compose run --rm backend ruff check app/ --fix
 
 ---
 
-## Architecture
-
-The backend uses a layered architecture — each layer has one responsibility and is independently testable.
-
-```
-User question
-     │
-     ▼
- FastAPI Route              ← HTTP transport only
-     │
-     ▼
- StockInsightService        ← Orchestrates all steps
-     ├── OpenAIService.extract_tickers()      ← question → ticker list
-     ├── FinnhubService.get_quote()           ← real-time price
-     ├── FinnhubService.get_company_profile() ← company metadata
-     ├── FinnhubService.get_metrics()         ← P/E ratio
-     ├── FinnhubService.get_candles()         ← historical data (if period detected)
-     └── OpenAIService.generate_summary()     ← LLM summary from structured data
-```
-
----
-
 ## Trade-offs & Decisions
 
 **Two-call OpenAI approach** — Ticker extraction and summary generation are separate OpenAI calls. This keeps prompts focused and makes ticker extraction independently testable. The trade-off is an additional LLM request per query.
@@ -220,15 +232,20 @@ User question
 
 ## What I'd Improve With More Time
 
-- **Interactive charts & technical indicators** — Render historical price charts using the candle data already being fetched and add indicators such as moving averages, RSI, and trend analysis.
+- **Additional metrics & technical indicators** — Expand the data fetched from Finnhub to include metrics such as moving averages, RSI, earnings per share, and dividend yield for richer analysis.
+- **Better financial context** — Incorporate earnings calendars, analyst ratings, insider trading activity, and macroeconomic indicators for deeper insight.
 - **News & sentiment analysis** — Incorporate recent company news, earnings coverage, and sentiment signals to provide richer context beyond market data alone.
+- **International markets** — Expand beyond US-listed equities to support international exchanges and additional asset classes.
+- **Request validation and guardrails** — Improve handling of ambiguous or unsupported prompts and add stricter validation around ticker extraction.
 - **Portfolio & watchlist support** — Allow users to save favourite stocks, build watchlists, and track portfolio performance across sessions.
 - **Streaming responses** — Stream OpenAI responses token-by-token for a more responsive conversational experience.
-- **Caching & rate limiting** — Introduce in-memory or Redis-based caching to reduce duplicate API requests, improve latency, and better manage third-party API limits.
+- **Caching & rate limiting** — Introduce in-memory caching to reduce duplicate API requests and better manage third-party API quotas.
+- **Retries and fallbacks** — Improve resilience when external APIs fail or rate limit, with automatic retries and graceful degradation.
 - **Authentication & persistence** — Add user authentication and persistent storage for saved portfolios, preferences, and query history.
-- **Improved observability** — Implement structured logging, metrics, health checks, and tracing to improve monitoring and debugging in production environments.
-- **Scalability improvements** — Move slower enrichment tasks, such as sentiment analysis and news aggregation, into background workers and introduce API throttling and queueing mechanisms for higher-volume workloads.
-- **Richer frontend experience** — Replace Streamlit with a React/Next.js frontend to support richer visualisations, more advanced interactions, and greater UI flexibility.
+- **Monitoring & observability** — Add structured logs, metrics dashboards, health checks, and alerting for production visibility.
+- **Better testing** — Add integration and end-to-end tests covering API failures, edge cases, and full request flows.
+- **Deployment pipeline** — Add automated deployment workflows and container registry publishing.
+- **Richer frontend experience** — Replace Streamlit with a React/Next.js frontend to support more advanced interactions and greater UI flexibility.
 
 ---
 
@@ -236,7 +253,7 @@ User question
 
 I used ChatGPT and Claude throughout the project as development assistants.
 
-ChatGPT was most helpful for discussing architecture decisions, Docker setup, CI/CD, testing approaches, and general software engineering questions.
-Claude was most helpful when iterating on implementation details, debugging issues, refining prompts, and reviewing code structure.
+ChatGPT was most helpful for high-level decisions, theoretical questions, and exploring ideas — such as architecture discussions, testing approaches, and general software engineering concepts.
+Claude was most helpful for hands-on coding and debugging — iterating on implementation details, fixing issues, refining prompts, and reviewing code structure.
 
 Both tools helped speed up development and explore alternative approaches, but all code, design decisions, testing, and final implementation choices were reviewed and validated by me.
