@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 from app.models.schemas import InsightResponse
 from app.utils.exceptions import ExternalAPIError, StockNotFoundError
-from tests.conftest import make_metrics, make_profile, make_quote
+from tests.conftest import make_profile, make_quote
 
 
 # ---------------------------------------------------------------------------
@@ -41,9 +41,7 @@ async def test_get_insight_multiple_stocks(service, mock_finnhub, mock_openai):
     mock_finnhub.get_company_profile = AsyncMock(
         side_effect=[make_profile("AAPL"), make_profile("MSFT")]
     )
-    mock_finnhub.get_metrics = AsyncMock(
-        side_effect=[make_metrics("AAPL"), make_metrics("MSFT")]
-    )
+    mock_finnhub.get_pe_ratio = AsyncMock(side_effect=[28.5, 32.1])
 
     result = await service.get_insight("Compare Apple and Microsoft")
 
@@ -88,19 +86,6 @@ async def test_get_insight_succeeds_when_profile_fetch_fails(service, mock_finnh
 
 
 # ---------------------------------------------------------------------------
-# _safe_profile
-# ---------------------------------------------------------------------------
-
-
-async def test_safe_profile_returns_none_on_failure(service, mock_finnhub):
-    mock_finnhub.get_company_profile.side_effect = Exception("Unexpected error")
-
-    result = await service._safe_profile("AAPL")
-
-    assert result is None
-
-
-# ---------------------------------------------------------------------------
 # _build_context
 # ---------------------------------------------------------------------------
 
@@ -116,8 +101,8 @@ def test_build_context_includes_all_quote_fields(service):
     assert result["AAPL Change"] == "$3.00 (2.04%)"
 
 
-def test_build_context_includes_profile_and_metrics_when_present(service):
-    result = service._build_context(["AAPL"], [make_quote()], [make_profile()], [make_metrics()], {}, None)
+def test_build_context_includes_profile_and_pe_when_present(service):
+    result = service._build_context(["AAPL"], [make_quote()], [make_profile()], [28.5], {}, None)
 
     assert result["AAPL Company Name"] == "Apple Inc."
     assert result["AAPL Industry"] == "Technology"
@@ -126,7 +111,7 @@ def test_build_context_includes_profile_and_metrics_when_present(service):
     assert result["AAPL P/E Ratio"] == "28.50"
 
 
-def test_build_context_omits_profile_fields_when_none(service):
+def test_build_context_omits_profile_and_pe_when_none(service):
     result = service._build_context(["AAPL"], [make_quote()], [None], [None], {}, None)
 
     assert "AAPL Company Name" not in result

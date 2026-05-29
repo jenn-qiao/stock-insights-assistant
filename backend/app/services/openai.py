@@ -48,18 +48,14 @@ class OpenAIService:
     def __init__(self, api_key: str | None):
         self.client = AsyncOpenAI(api_key=api_key) if api_key else None
 
-    def _require_client(self) -> None:
-        """Raise a clear error if no API key was configured."""
-        if self.client is None:
-            raise ExternalAPIError("OpenAI API key is not configured.")
-
     async def extract_tickers(self, question: str) -> list[str]:
         """Extract stock ticker symbols from a natural language question.
 
         Returns uppercase tickers e.g. ["AAPL", "MSFT"].
         Raises ExternalAPIError if nothing can be identified or the API call fails.
         """
-        self._require_client()
+        if self.client is None:
+            raise ExternalAPIError("OpenAI API key is not configured.")
         try:
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -89,7 +85,7 @@ class OpenAIService:
             raw = response.choices[0].message.content.strip()
         except Exception as e:
             logger.error("Ticker extraction failed: %s", e)
-            raise ExternalAPIError("Could not extract stock tickers from question") from e
+            raise ExternalAPIError("Could not extract stock tickers from question")
 
         upper = raw.upper()
 
@@ -117,7 +113,8 @@ class OpenAIService:
 
     async def generate_stock_summary(self, question: str, stock_data: dict) -> str:
         """Generate a plain-text summary from structured stock data and the user's question."""
-        self._require_client()
+        if self.client is None:
+            raise ExternalAPIError("OpenAI API key is not configured.")
         formatted_data = "\n".join(f"  {k}: {v}" for k, v in stock_data.items())
         user_message = f"Stock data:\n{formatted_data}\n\nQuestion: {question}"
 
@@ -134,5 +131,5 @@ class OpenAIService:
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.error("OpenAI API call failed: %s", e)
-            raise ExternalAPIError("Failed to generate stock summary") from e
+            raise ExternalAPIError("Failed to generate stock summary")
 

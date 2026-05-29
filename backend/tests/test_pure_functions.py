@@ -5,9 +5,7 @@ Tests for pure utility functions — no mocking, no I/O.
 from app.services.insight import _detect_period
 
 
-# ---------------------------------------------------------------------------
 # _detect_period
-# ---------------------------------------------------------------------------
 
 
 def test_week_query():

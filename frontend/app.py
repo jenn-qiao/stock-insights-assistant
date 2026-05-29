@@ -140,7 +140,7 @@ def main() -> None:
     _init_session_state()
 
     st.title("📈 Stock Insights Assistant")
-    st.caption("Ask natural language questions about stocks and get AI-powered summaries.")
+    st.caption("Ask questions about stocks and get AI-powered summaries.")
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
@@ -166,10 +166,7 @@ def main() -> None:
                 st.rerun()
 
         st.divider()
-        st.markdown(
-            "Market data from [Finnhub.io](https://finnhub.io/) — "
-            "quotes, volume, news, and analyst ratings."
-        )
+        st.markdown("Market data from [Finnhub.io](https://finnhub.io/)")
         st.caption("Summaries powered by OpenAI.")
 
 
