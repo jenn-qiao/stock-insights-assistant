@@ -1,6 +1,6 @@
 # Stock Insights Assistant
 
-Ask natural language questions about stocks, ETFs, crypto, forex, and international markets — and get AI-powered, data-backed summaries in plain English.
+Ask natural language questions about US stocks and ETFs — and get AI-powered, data-backed summaries in plain English.
 
 Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 
@@ -8,8 +8,9 @@ Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 
 ## Features
 
-- Real-time quotes — US stocks, ETFs, indices, crypto, forex, international markets
-- Historical trend analysis — week, month, 3M, 6M, YTD, YoY, 52-week
+- Real-time quotes — US stocks, ETFs, and indices
+- Historical trend analysis — week, month, year
+- P/E ratio and company profile data
 - Multi-stock comparisons
 - Typo tolerance and fuzzy company name matching
 - "Did you mean...?" suggestions for ambiguous tickers
@@ -23,9 +24,8 @@ Built with FastAPI, Streamlit, Finnhub, and OpenAI.
 |---|---|
 | "How is Apple doing today?" | Real-time quote + company profile |
 | "Compare Tesla and Ford" | Side-by-side stats |
-| "How has NVDA performed this year?" | 365-day historical candles |
-| "How is Vodafone performing?" | UK stock via LSE feed |
-| "How is Toyota doing?" | Japanese stock via TSE feed |
+| "How has NVDA performed this year?" | Historical price data |
+| "What is Amazon's P/E ratio?" | Fundamental metrics |
 | "appple stock" | Typo-corrected to AAPL |
 
 ---
@@ -51,7 +51,7 @@ backend/
 ├── app/
 │   ├── api/           # Route handlers (HTTP transport only)
 │   ├── services/
-│   │   ├── finnhub.py   # Finnhub client + symbol normaliser
+│   │   ├── finnhub.py   # Finnhub API client
 │   │   ├── openai.py    # Ticker extraction + summary generation
 │   │   └── insight.py   # Orchestration layer
 │   ├── models/        # Pydantic schemas
@@ -148,7 +148,7 @@ docker compose run --rm backend ruff check app/ --fix
 
 ## Architecture
 
-The backend uses a strict layered architecture — each layer has one responsibility and is independently testable.
+The backend uses a layered architecture — each layer has one responsibility and is independently testable.
 
 ```
 User question
@@ -161,25 +161,22 @@ User question
      ├── OpenAIService.extract_tickers()      ← question → ticker list
      ├── FinnhubService.get_quote()           ← real-time price
      ├── FinnhubService.get_company_profile() ← company metadata
-     ├── FinnhubService.get_candles()         ← historical OHLC (if period detected)
+     ├── FinnhubService.get_metrics()         ← P/E ratio
+     ├── FinnhubService.get_candles()         ← historical data (if period detected)
      └── OpenAIService.generate_summary()     ← LLM summary from structured data
 ```
-
-**Symbol normalisation** — `normalise_symbol()` in `finnhub.py` routes each ticker to the correct feed before any API call. US tickers pass through unchanged; crypto → `BINANCE:<TICKER>USDT`; forex → `OANDA:<BASE>_<QUOTE>`; international stocks get their exchange prefix (e.g. `LSE:VOD`).
-
-**Ticker extraction** — a dedicated GPT-4o-mini call resolves company names, typos, case variations, and multiple asset classes into ticker symbols before the summary call.
 
 ---
 
 ## Trade-offs & Decisions
 
-**Two-call OpenAI approach** — Ticker extraction and summary generation are separate calls. Each prompt stays focused and the extraction step is independently testable. The added latency is acceptable given the reliability improvement.
+**Two-call OpenAI approach** — Ticker extraction and summary generation are separate calls. Each prompt stays focused and the extraction step is independently testable.
 
-**In-memory symbol normaliser** — Asset class routing is handled by lookup tables in `finnhub.py` rather than a ticker database. Fast and zero-dependency, but requires manual updates for new markets.
+**Candle failures are silent** — Historical candle errors are skipped gracefully so a data failure never blocks a user query.
 
-**Candle failures are silent** — Historical candle errors are skipped gracefully. The insight is always generated from the real-time quote, so a candle API failure never breaks a user query.
+**US stocks only** — The app focuses on US-listed stocks and ETFs. This keeps the codebase simple — tickers are passed directly to Finnhub without any exchange-prefix routing.
 
-**Streamlit frontend** — Chosen for speed of development. The trade-off is limited UI control (e.g. sidebar buttons require `st.rerun()` workarounds) vs a React frontend.
+**Streamlit frontend** — Chosen for speed of development. The trade-off is limited UI control (e.g. sidebar buttons require `st.rerun()` to avoid duplicate messages) vs a React frontend.
 
 ---
 
@@ -188,12 +185,10 @@ User question
 - **Charts** — render a price chart from the candle data already being fetched
 - **Streaming** — stream the OpenAI summary token-by-token for snappier UX
 - **Caching** — cache quotes for 15–30s to avoid duplicate Finnhub calls
-- **More historical resolutions** — weekly/monthly candles for multi-year views
 - **Portfolio mode** — let users save and track a watchlist across sessions
-- **Broader international coverage** — integrate a ticker search API instead of a static table
 
 ---
 
 ## AI Tools Used
 
-Claude was used throughout to scaffold boilerplate, iterate on OpenAI prompts, debug Docker and Finnhub edge cases, and suggest architectural patterns like the two-call approach and `normalise_symbol`. All output was reviewed, tested, and adapted to fit the project.
+Claude was used throughout to scaffold boilerplate, iterate on OpenAI prompts, debug Docker and Finnhub edge cases, and suggest architectural patterns like the two-call approach. All output was reviewed, tested, and adapted to fit the project.

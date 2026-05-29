@@ -29,7 +29,7 @@ For a comparison:
 - One bullet per ticker: “- <TICKER>: $<price> (<+/->percent%), P/E: <pe>, Market Cap: <cap>”
 - End with 1–2 sentences on the clearest data-backed difference (valuation gap, momentum, size).
 
-For historical/trend questions (week, month, year, YTD, YoY etc.):
+For historical/trend questions (week, month, year):
 - Open with one sentence: "<Company> (<TICKER>) is <up/down> <pct>% over the <period>."
 - Follow with bullet points: period high, period low, start price, end price.
 - End with one factual sentence describing the trend direction based solely on the data (e.g. "The stock declined steadily over the period, hitting its low in week 3.").
@@ -76,7 +76,6 @@ class OpenAIService:
                             "5. Known mappings (non-exhaustive):\n"
                             "   Stocks: Apple->AAPL, Google/Alphabet->GOOGL, Microsoft->MSFT, Amazon->AMZN, Tesla->TSLA, Meta/Facebook->META, Nvidia->NVDA, Netflix->NFLX, Spotify->SPOT, Ford->F, AMD->AMD, Palantir->PLTR, IonQ->IONQ, Uber->UBER, Airbnb->ABNB, Coinbase->COIN, Square/Block->XYZ, Shopify->SHOP, Visa->V, Mastercard->MA, JPMorgan->JPM, Goldman Sachs->GS, Disney->DIS, Nike->NKE, Starbucks->SBUX, Salesforce->CRM, Oracle->ORCL, Intel->INTC, Qualcomm->QCOM, PayPal->PYPL, Snap->SNAP, Robinhood->HOOD, DoorDash->DASH, Lyft->LYFT, Rivian->RIVN, Lucid->LCID.\n"
                             "   ETFs/Indices: S&P 500/SPDR/SPY->SPY, Nasdaq/QQQ->QQQ, Dow Jones/DIA->DIA, Russell 2000/IWM->IWM, VIX/volatility index->VIX, Total market/VTI->VTI, Emerging markets/EEM->EEM, Gold/GLD->GLD, Oil/USO->USO, ARK Innovation/ARKK->ARKK.\n"
-                            "   International stocks (return the raw ticker without exchange prefix — the backend handles routing): Vodafone->VOD, HSBC->HSBA, BP->BP, Shell->SHEL, AstraZeneca->AZN, GSK->GSK, Rio Tinto->RIO, BHP->BHP, SAP->SAP, Siemens->SIE, BMW->BMW, Volkswagen->VOW3, Bayer->BAYN, Deutsche Telekom->DTE, Toyota->7203, Sony->6758, SoftBank->9984, Tencent->0700, Alibaba HK->9988.\n"
                             "6. If confident (including after fuzzy/typo matching), return a comma-separated list of tickers in uppercase (e.g. AAPL,MSFT).\n"
                             "7. If you think you know the company but want to confirm due to an unusual spelling, return: SUGGEST:<TICKER>:<company name as the user wrote it>  (e.g. SUGGEST:AAPL:appple)\n"
                             "8. Only return UNKNOWN if you genuinely have no idea what company the user is referring to."

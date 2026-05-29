@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.models.schemas import CandleResponse, CompanyProfileResponse, StockQuoteResponse
+from app.models.schemas import CandleResponse, CompanyProfileResponse, StockMetricsResponse, StockQuoteResponse
 from app.services.insight import StockInsightService
 
 
@@ -26,19 +26,19 @@ def make_profile(symbol: str = "AAPL") -> CompanyProfileResponse:
         exchange="NASDAQ",
         industry="Technology",
         market_cap=3000000.0,
-        logo="https://logo.clearbit.com/apple.com",
-        weburl="https://www.apple.com",
     )
+
+
+def make_metrics(symbol: str = "AAPL") -> StockMetricsResponse:
+    return StockMetricsResponse(symbol=symbol, pe_ratio=28.5)
 
 
 def make_candle(symbol: str = "AAPL") -> CandleResponse:
     return CandleResponse(
         symbol=symbol,
-        opens=[140.0, 145.0, 148.0],
         closes=[145.0, 148.0, 150.0],
         highs=[146.0, 149.0, 152.0],
         lows=[139.0, 144.0, 147.0],
-        timestamps=[1700000000, 1700086400, 1700172800],
     )
 
 
@@ -47,6 +47,7 @@ def mock_finnhub():
     client = MagicMock()
     client.get_quote = AsyncMock(return_value=make_quote())
     client.get_company_profile = AsyncMock(return_value=make_profile())
+    client.get_metrics = AsyncMock(return_value=make_metrics())
     client.get_candles = AsyncMock(return_value=make_candle())
     return client
 

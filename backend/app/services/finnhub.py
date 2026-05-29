@@ -1,9 +1,8 @@
 import logging
-import time
 
 import httpx
 
-from app.models.schemas import CandleResponse, CompanyProfileResponse, StockQuoteResponse
+from app.models.schemas import CandleResponse, CompanyProfileResponse, StockMetricsResponse, StockQuoteResponse
 from app.utils.exceptions import ExternalAPIError, StockNotFoundError
 
 BASE_URL = "https://finnhub.io/api/v1"
@@ -29,39 +28,7 @@ MOCK_PROFILE = CompanyProfileResponse(
     exchange="NASDAQ",
     industry="Technology",
     market_cap=1000000.0,
-    logo="",
-    weburl="https://example.com",
 )
-
-
-# International exchange prefixes for known tickers
-INTERNATIONAL_TICKERS = {
-    # UK (LSE)
-    "VOD": "LSE:VOD", "HSBA": "LSE:HSBA", "BP": "LSE:BP", "SHEL": "LSE:SHEL",
-    "AZN": "LSE:AZN", "GSK": "LSE:GSK", "RIO": "LSE:RIO", "BHP": "LSE:BHP",
-    # Germany (XETRA)
-    "SAP": "XETRA:SAP", "SIE": "XETRA:SIE", "BMW": "XETRA:BMW",
-    "VOW3": "XETRA:VOW3", "BAYN": "XETRA:BAYN", "DTE": "XETRA:DTE",
-    # Japan (TSE)
-    "7203": "TSE:7203",  # Toyota
-    "6758": "TSE:6758",  # Sony
-    "9984": "TSE:9984",  # SoftBank
-    # Hong Kong (HKEX)
-    "0700": "HKEX:0700",  # Tencent
-    "9988": "HKEX:9988",  # Alibaba HK
-}
-
-
-def normalise_symbol(symbol: str) -> str:
-    """Convert a raw ticker to the Finnhub-compatible symbol format.
-
-    - Known international tickers get their exchange prefix (e.g. VOD -> LSE:VOD)
-    - Everything else is passed through unchanged (US stocks, ETFs)
-    """
-    upper = symbol.upper()
-    if upper in INTERNATIONAL_TICKERS:
-        return INTERNATIONAL_TICKERS[upper]
-    return upper
 
 
 class FinnhubService:
@@ -83,8 +50,7 @@ class FinnhubService:
             logger.warning("No Finnhub key found, using mock data")
             return MOCK_QUOTE.model_copy(update={"symbol": symbol})
 
-        finnhub_symbol = normalise_symbol(symbol)
-        data = await self._get("/quote", {"symbol": finnhub_symbol})
+        data = await self._get("/quote", {"symbol": symbol.upper()})
 
         # Finnhub returns all zeros for unrecognised symbols
         if data.get("c", 0) == 0:
@@ -106,32 +72,45 @@ class FinnhubService:
             logger.warning("No Finnhub key found, using mock data")
             return MOCK_PROFILE.model_copy(update={"ticker": symbol})
 
-        finnhub_symbol = normalise_symbol(symbol)
-        data = await self._get("/stock/profile2", {"symbol": finnhub_symbol})
+        data = await self._get("/stock/profile2", {"symbol": symbol.upper()})
 
         if not data:
             raise StockNotFoundError(symbol)
 
         return CompanyProfileResponse.model_validate(data)
 
+    async def get_metrics(self, symbol: str) -> StockMetricsResponse:
+        """Fetch key fundamental metrics (P/E ratio) for the given symbol.
+
+        Falls back to empty metrics if no API key is configured.
+
+        Raises:
+            ExternalAPIError: On timeout, HTTP error, or network failure.
+        """
+        if not self.api_key:
+            logger.warning("No Finnhub key found, using mock metrics")
+            return StockMetricsResponse(symbol=symbol, pe_ratio=None)
+
+        data = await self._get("/stock/metric", {"symbol": symbol.upper(), "metric": "all"})
+
+        metric = data.get("metric", {})
+        pe = metric.get("peBasicExclExtraTTM") or metric.get("peNormalizedAnnual")
+        return StockMetricsResponse(symbol=symbol, pe_ratio=pe if pe and pe > 0 else None)
+
     async def get_candles(self, symbol: str, from_ts: int, to_ts: int, resolution: str = "D") -> CandleResponse:
         """Fetch historical OHLC candles for a symbol between two Unix timestamps."""
         if not self.api_key:
             logger.warning("No Finnhub key found, using mock candle data")
-            now = int(time.time())
             return CandleResponse(
                 symbol=symbol,
-                opens=[100.0, 101.0, 102.0],
                 closes=[101.0, 102.0, 103.0],
                 highs=[103.0, 104.0, 105.0],
                 lows=[99.0, 100.0, 101.0],
-                timestamps=[now - 172800, now - 86400, now],
             )
 
-        finnhub_symbol = normalise_symbol(symbol)
         data = await self._get(
             "/stock/candle",
-            {"symbol": finnhub_symbol, "resolution": resolution, "from": from_ts, "to": to_ts},
+            {"symbol": symbol.upper(), "resolution": resolution, "from": from_ts, "to": to_ts},
         )
 
         if data.get("s") == "no_data" or not data.get("c"):
@@ -139,11 +118,9 @@ class FinnhubService:
 
         return CandleResponse(
             symbol=symbol,
-            opens=data["o"],
             closes=data["c"],
             highs=data["h"],
             lows=data["l"],
-            timestamps=data["t"],
         )
 
     async def _get(self, path: str, params: dict) -> dict:

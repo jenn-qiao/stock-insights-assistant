@@ -28,21 +28,24 @@ class CompanyProfileResponse(BaseModel):
     exchange: str
     industry: str = Field(alias="finnhubIndustry")
     market_cap: float = Field(alias="marketCapitalization")  # in millions USD
-    logo: str
-    weburl: str
 
     model_config = {"populate_by_name": True}
 
 
 class CandleResponse(BaseModel):
-    """OHLC candle data for a symbol over a date range, used for historical trend queries."""
+    """Historical price data for a symbol over a date range, used for trend queries."""
 
     symbol: str
-    opens: list[float]
     closes: list[float]
     highs: list[float]
     lows: list[float]
-    timestamps: list[int]  # Unix timestamps, one per candle
+
+
+class StockMetricsResponse(BaseModel):
+    """Key fundamental metrics for a stock."""
+
+    symbol: str
+    pe_ratio: float | None = None  # trailing twelve months P/E
 
 
 class InsightResponse(BaseModel):
