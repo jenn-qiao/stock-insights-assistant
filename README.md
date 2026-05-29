@@ -88,7 +88,10 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Then open http://localhost:8501
+## Access the Application
+
+- Frontend (Streamlit): http://localhost:8501
+- Backend API Docs (FastAPI Swagger): http://localhost:8000/docs
 
 ---
 
@@ -194,25 +197,39 @@ User question
 
 ## Trade-offs & Decisions
 
-**Two-call OpenAI approach** — Ticker extraction and summary generation are separate calls. Each prompt stays focused and the extraction step is independently testable.
+**Two-call OpenAI approach** — Ticker extraction and summary generation are separate OpenAI calls. This keeps prompts focused and makes ticker extraction independently testable. The trade-off is an additional LLM request per query.
 
-**Candle failures are silent** — Historical candle errors are skipped gracefully so a data failure never blocks a user query.
+**Keeping the architecture simple** — I separated the application into a frontend, API layer, and service layer to keep responsibilities clear and make testing easier. For the scope of this project, I avoided introducing additional complexity such as databases, message queues, or caching layers.
 
-**US stocks only** — The app focuses on US-listed stocks and ETFs. This keeps the codebase simple — tickers are passed directly to Finnhub without any exchange-prefix routing.
+**Using OpenAI for interpretation, not market data** — OpenAI is used to understand the user's question and summarise the results, while all stock data comes directly from Finnhub. This helps reduce the risk of the model inventing financial information and keeps responses grounded in real market data.
 
-**Streamlit frontend** — Chosen for speed of development. The trade-off is limited UI control (e.g. sidebar buttons require `st.rerun()` to avoid duplicate messages) vs a React frontend.
+**Streamlit over a custom frontend** — I chose Streamlit because it allowed me to focus on the backend architecture and AI workflow rather than spending time building a frontend from scratch. The trade-off is less flexibility in the user interface.
+
+**Favouring reliability over completeness** — If some non-essential data cannot be retrieved (for example historical candle data), the application still returns a useful response rather than failing completely. This provides a better user experience, although some context may be missing.
+
+**Focusing on US-listed stocks and ETFs** — To keep the scope manageable, I focused on US-listed securities. Supporting multiple exchanges and regions would require additional symbol resolution and market-specific handling.
 
 ---
 
 ## What I'd Improve With More Time
 
-- **Charts** — render a price chart from the candle data already being fetched
-- **Streaming** — stream the OpenAI summary token-by-token for snappier UX
-- **Caching** — cache quotes for 15–30s to avoid duplicate Finnhub calls
-- **Portfolio mode** — let users save and track a watchlist across sessions
+- **Interactive charts & technical indicators** — Render historical price charts using the candle data already being fetched and add indicators such as moving averages, RSI, and trend analysis.
+- **News & sentiment analysis** — Incorporate recent company news, earnings coverage, and sentiment signals to provide richer context beyond market data alone.
+- **Portfolio & watchlist support** — Allow users to save favourite stocks, build watchlists, and track portfolio performance across sessions.
+- **Streaming responses** — Stream OpenAI responses token-by-token for a more responsive conversational experience.
+- **Caching & rate limiting** — Introduce in-memory or Redis-based caching to reduce duplicate API requests, improve latency, and better manage third-party API limits.
+- **Authentication & persistence** — Add user authentication and persistent storage for saved portfolios, preferences, and query history.
+- **Improved observability** — Implement structured logging, metrics, health checks, and tracing to improve monitoring and debugging in production environments.
+- **Scalability improvements** — Move slower enrichment tasks, such as sentiment analysis and news aggregation, into background workers and introduce API throttling and queueing mechanisms for higher-volume workloads.
+- **Richer frontend experience** — Replace Streamlit with a React/Next.js frontend to support richer visualisations, more advanced interactions, and greater UI flexibility.
 
 ---
 
 ## AI Tools Used
 
-Claude was used throughout to scaffold boilerplate, iterate on OpenAI prompts, debug Docker and Finnhub edge cases, and suggest architectural patterns like the two-call approach. All output was reviewed, tested, and adapted to fit the project.
+I used ChatGPT and Claude throughout the project as development assistants.
+
+ChatGPT was most helpful for discussing architecture decisions, Docker setup, CI/CD, testing approaches, and general software engineering questions.
+Claude was most helpful when iterating on implementation details, debugging issues, refining prompts, and reviewing code structure.
+
+Both tools helped speed up development and explore alternative approaches, but all code, design decisions, testing, and final implementation choices were reviewed and validated by me.

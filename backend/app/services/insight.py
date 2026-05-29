@@ -7,6 +7,54 @@ from app.services.openai import OpenAIService
 
 logger = logging.getLogger(__name__)
 
+# curated stock lists by sector — used when the user asks for top gainers/losers
+SECTOR_TICKERS: dict[str, list[str]] = {
+    "tech": ["AAPL", "MSFT", "NVDA", "META", "GOOGL", "AMZN", "TSLA", "AMD", "INTC", "QCOM", "ORCL", "CRM", "NFLX", "ADBE", "PLTR"],
+    "finance": ["JPM", "GS", "BAC", "WFC", "MS", "BLK", "V", "MA", "PYPL", "C"],
+    "healthcare": ["JNJ", "PFE", "UNH", "ABBV", "MRK", "LLY", "TMO", "ABT"],
+    "energy": ["XOM", "CVX", "COP", "SLB", "EOG", "PXD"],
+    "retail": ["WMT", "AMZN", "TGT", "COST", "HD", "LOW", "EBAY", "ETSY", "SHOP", "NKE"],
+    "consumer": ["MCD", "SBUX", "KO", "PEP", "PG", "CL", "DIS", "NFLX", "ABNB", "UBER"],
+    "crypto": ["COIN", "MSTR", "HOOD", "RIOT", "MARA"],
+    # fallback list when no sector is mentioned
+    "general": ["AAPL", "MSFT", "NVDA", "META", "GOOGL", "AMZN", "TSLA", "AMD", "JPM", "V", "NFLX", "DIS", "UBER", "COIN", "PLTR"],
+}
+
+# words that map a user's sector mention to a key in SECTOR_TICKERS
+SECTOR_KEYWORDS: dict[str, str] = {
+    "tech": "tech", "technology": "tech", "software": "tech",
+    "finance": "finance", "financial": "finance", "banking": "finance", "bank": "finance",
+    "health": "healthcare", "healthcare": "healthcare", "pharma": "healthcare", "pharmaceutical": "healthcare",
+    "energy": "energy", "oil": "energy",
+    "retail": "retail", "shopping": "retail",
+    "consumer": "consumer", "food": "consumer", "beverage": "consumer",
+    "crypto": "crypto", "cryptocurrency": "crypto", "bitcoin": "crypto",
+}
+
+
+def _detect_scan(question: str) -> tuple[str, str] | None:
+    """Check if the user is asking for top gainers or losers (with optional sector).
+    Returns (direction, sector) e.g. ("gainer", "tech"), or None if not a scan question.
+    """
+    q = question.lower()
+
+    is_gainer = any(w in q for w in ["gainer", "gaining", "best performing", "biggest gain", "top gain", "up today", "rising","winners"])
+    is_loser = any(w in q for w in ["loser", "losing", "worst performing", "biggest loss", "top loss", "down today", "falling", "dropping"])
+
+    if not (is_gainer or is_loser):
+        return None
+
+    direction = "gainer" if is_gainer else "loser"
+
+    # check if the user mentioned a sector
+    sector = "general"
+    for keyword, sector_key in SECTOR_KEYWORDS.items():
+        if keyword in q:
+            sector = sector_key
+            break
+
+    return direction, sector
+
 
 def _detect_period(question: str) -> tuple | None:
     """Check if the question is asking about a time period (week, month, year).
@@ -31,6 +79,11 @@ class StockInsightService:
         self.openai = openai
 
     async def get_insight(self, question: str) -> InsightResponse:
+        # check if they want top gainers/losers — handled differently from a single stock lookup
+        scan = _detect_scan(question)
+        if scan:
+            return await self._get_scan_insight(question, scan)
+
         # ask OpenAI what stock(s) the user is asking about
         symbols = await self.openai.extract_tickers(question)
 
@@ -59,6 +112,33 @@ class StockInsightService:
         summary = await self.openai.generate_stock_summary(question, stock_data)
 
         return InsightResponse(symbols=symbols, summary=summary)
+
+    async def _get_scan_insight(self, question: str, scan: tuple[str, str]) -> InsightResponse:
+        """Fetch quotes for a sector's stock list, rank by % change, return the top 5."""
+        direction, sector = scan
+        tickers = SECTOR_TICKERS[sector]
+
+        # fetch a quote for every ticker in the list — skip any that fail
+        results: list[tuple[str, object]] = []
+        for ticker in tickers:
+            try:
+                quote = await self.finnhub.get_quote(ticker)
+                results.append((ticker, quote))
+            except Exception:
+                logger.warning("Could not fetch quote for %s — skipping", ticker)
+
+        # sort by % change: highest first for gainers, lowest first for losers
+        results.sort(key=lambda x: x[1].percent_change, reverse=(direction == "gainer"))
+        top5 = results[:5]
+
+        # build a ranked data dict for OpenAI — "#1 NVDA", "#2 META", etc.
+        stock_data: dict[str, str] = {}
+        for rank, (symbol, quote) in enumerate(top5, start=1):
+            stock_data[f"#{rank} {symbol} Price"] = f"${quote.current_price:.2f}"
+            stock_data[f"#{rank} {symbol} Change"] = f"{quote.percent_change:+.2f}%"
+
+        summary = await self.openai.generate_stock_summary(question, stock_data)
+        return InsightResponse(symbols=[s for s, _ in top5], summary=summary)
 
     def _build_context(
         self,

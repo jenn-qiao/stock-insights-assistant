@@ -39,7 +39,6 @@ def _init_session_state() -> None:
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "example_questions" not in st.session_state:
-        # pick 4 random examples once per session so they don't change on every rerun
         st.session_state.example_questions = random.sample(EXAMPLE_QUESTIONS, 4)
     if "pending_question" not in st.session_state:
         st.session_state.pending_question = None
