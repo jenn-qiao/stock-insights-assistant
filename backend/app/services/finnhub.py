@@ -33,10 +33,12 @@ class FinnhubService:
 
         data = await self._get("/quote", {"symbol": symbol.upper()})
 
-        # Finnhub returns all zeros for unrecognised symbols instead of a 404
+        # Finnhub returns all zeros for unknown symbols instead of a 404,
+        # so we check the price field and raise our own error
         if data.get("c", 0) == 0:
             raise StockNotFoundError(symbol)
 
+        # Finnhub doesn't include the symbol in the response so we add it manually
         data["symbol"] = symbol
         return StockQuoteResponse.model_validate(data)
 
@@ -66,6 +68,7 @@ class FinnhubService:
 
         data = await self._get("/stock/metric", {"symbol": symbol.upper(), "metric": "all"})
         metric = data.get("metric", {})
+        # try the trailing twelve months P/E first, fall back to the annual figure
         pe = metric.get("peBasicExclExtraTTM") or metric.get("peNormalizedAnnual")
         return pe if pe and pe > 0 else None
 
@@ -84,7 +87,7 @@ class FinnhubService:
             {"symbol": symbol.upper(), "resolution": "D", "from": from_ts, "to": to_ts},
         )
 
-        # Finnhub returns {"s": "no_data"} when there are no candles for the range
+        # Finnhub returns {"s": "no_data"} when there are no candles for the date range
         if data.get("s") == "no_data" or not data.get("c"):
             raise StockNotFoundError(symbol)
 

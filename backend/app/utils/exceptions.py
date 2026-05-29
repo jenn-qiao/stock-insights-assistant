@@ -1,3 +1,7 @@
+# StockNotFoundError is raised when a ticker exists but Finnhub doesn't recognise it
+# ExternalAPIError is raised when a request to Finnhub or OpenAI fails
+# Keeping them separate means the frontend can show different messages for each case
+
 class StockNotFoundError(Exception):
     def __init__(self, symbol: str):
         self.symbol = symbol

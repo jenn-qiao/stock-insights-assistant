@@ -11,19 +11,10 @@ router = APIRouter(prefix="/stocks", tags=["stocks"])
 
 
 def get_insight_service() -> StockInsightService:
-    """
-    Dependency injection factory.
-
-    Creates and returns a StockInsightService instance
-    with all required external service dependencies.
-
-    Services can be swapped with mocks during unit tests.
-    """
-
+    # builds the service with real API clients on each request
+    # in tests, we skip this and pass in mocked clients directly
     return StockInsightService(
-        # Service responsible for retrieving stock market data
         finnhub=FinnhubService(api_key=settings.finnhub_api_key),
-        # Service responsible for generating AI insights
         openai=OpenAIService(api_key=settings.openai_api_key),
     )
 

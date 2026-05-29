@@ -40,7 +40,8 @@ class StockInsightService:
         # get current price, company info, and P/E ratio for each stock
         quotes, profiles, pe_ratios = await self._fetch_stock_data(symbols)
 
-        # if they asked about a time period, also get historical price data
+        # only fetch historical data if the question mentions a time period —
+        # no point calling Finnhub for candles if they just want today's price
         candles = {}
         if period:
             from_ts, to_ts, _ = period
@@ -48,6 +49,7 @@ class StockInsightService:
                 try:
                     candles[symbol] = await self.finnhub.get_candles(symbol, from_ts, to_ts)
                 except Exception:
+                    # if historical data fails, skip it — we can still show today's price
                     logger.warning("Could not fetch candles for %s — skipping", symbol)
 
         # put all the data into a dictionary for OpenAI to read
@@ -79,12 +81,14 @@ class StockInsightService:
             stock_data[f"{symbol} Previous Close"] = f"${quote.previous_close:.2f}"
             stock_data[f"{symbol} Change"] = f"${quote.change:.2f} ({quote.percent_change:.2f}%)"
 
+            # company info isn't always available (e.g. some ETFs), so only add it if we got it
             if profile:
                 stock_data[f"{symbol} Company Name"] = profile.name
                 stock_data[f"{symbol} Industry"] = profile.industry
                 stock_data[f"{symbol} Market Cap"] = f"${profile.market_cap:.2f}M"
                 stock_data[f"{symbol} Exchange"] = profile.exchange
 
+            # same for P/E — not all stocks have one, so skip it if missing
             if pe is not None:
                 stock_data[f"{symbol} P/E Ratio"] = f"{pe:.2f}"
 
@@ -105,7 +109,9 @@ class StockInsightService:
 
     async def _fetch_stock_data(self, symbols: list) -> tuple:
         """Get price, company info, and P/E ratio for each stock.
-        Price is required. Company info and P/E are optional — skipped if unavailable.
+        Price is required — if that fails the whole request fails.
+        Company info and P/E are optional — skipped if unavailable so a partial failure
+        doesn't block the whole response.
         """
         quotes = []
         profiles = []

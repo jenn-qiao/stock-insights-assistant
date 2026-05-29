@@ -6,6 +6,7 @@ import random
 import httpx
 import streamlit as st
 
+# reads from environment variable so it works in Docker — falls back to localhost for local dev
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 EXAMPLE_QUESTIONS = [
@@ -33,15 +34,19 @@ EXAMPLE_QUESTIONS = [
 
 
 def _init_session_state() -> None:
+    # Streamlit reruns the whole script on every interaction, so we use session_state
+    # to keep the chat history and example questions the same across reruns
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "example_questions" not in st.session_state:
+        # pick 4 random examples once per session so they don't change on every rerun
         st.session_state.example_questions = random.sample(EXAMPLE_QUESTIONS, 4)
     if "pending_question" not in st.session_state:
         st.session_state.pending_question = None
 
 
 def _render_assistant_reply(question: str) -> None:
+    # send the question to the backend and display the response
     with st.chat_message("assistant"):
         with st.spinner("Fetching data and generating insights…"):
             try:
@@ -67,7 +72,9 @@ def _render_assistant_reply(question: str) -> None:
                 msg = "Request timed out — the backend took too long to respond."
                 st.error(msg)
                 st.session_state.messages.append({"role": "assistant", "content": msg})
+
             except httpx.HTTPStatusError as e:
+                # map each backend error to a friendly user-facing message
                 status = e.response.status_code
                 try:
                     detail = e.response.json().get("detail", "")
@@ -113,10 +120,12 @@ def _render_assistant_reply(question: str) -> None:
                     st.error(msg)
 
                 st.session_state.messages.append({"role": "assistant", "content": msg})
+
             except httpx.ConnectError:
                 msg = "Could not connect to the backend. Is the server running?"
                 st.error(msg)
                 st.session_state.messages.append({"role": "assistant", "content": msg})
+
             except Exception:
                 msg = "Something went wrong. Please try again in a moment."
                 st.error(msg)
@@ -124,9 +133,12 @@ def _render_assistant_reply(question: str) -> None:
 
 
 def _handle_question(question: str) -> None:
+    # save the question to history so it shows up on reruns
     st.session_state.messages.append({"role": "user", "content": question})
+    # display the user's message in the chat
     with st.chat_message("user"):
         st.markdown(question)
+    # call the backend and show the assistant's response
     _render_assistant_reply(question)
 
 
@@ -142,6 +154,7 @@ def main() -> None:
     st.title("📈 Stock Insights Assistant")
     st.caption("Ask questions about stocks and get AI-powered summaries.")
 
+    # replay all previous messages so the chat history shows on rerun
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -158,10 +171,12 @@ def main() -> None:
     if typed:
         _handle_question(typed)
 
+    # sidebar with example questions and attribution
     with st.sidebar:
         st.header("Example questions")
         for example in st.session_state.example_questions:
             if st.button(example, use_container_width=True, key=f"example_{example}"):
+                # store the question and rerun so it's handled in the main flow, not the sidebar
                 st.session_state.pending_question = example
                 st.rerun()
 
