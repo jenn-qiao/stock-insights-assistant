@@ -69,6 +69,24 @@ OpenAI generates a plain-English summary
 App displays the response
 ```
 
+**Service layer detail:**
+
+```
+User question
+     │
+     ▼
+ FastAPI Route              ← HTTP transport only
+     │
+     ▼
+ StockInsightService        ← Orchestrates all steps
+     ├── OpenAIService.extract_tickers()      ← question → ticker list
+     ├── FinnhubService.get_quote()           ← real-time price
+     ├── FinnhubService.get_company_profile() ← company metadata
+     ├── FinnhubService.get_pe_ratio()        ← P/E ratio
+     ├── FinnhubService.get_candles()         ← historical data (if period detected)
+     └── OpenAIService.generate_summary()     ← LLM summary from structured data
+```
+
 ```text
 backend/
 ├── app/
@@ -89,24 +107,6 @@ frontend/
 ├── app.py             # Streamlit chat UI
 ├── Dockerfile
 └── requirements.txt
-```
-
-**Service layer detail:**
-
-```
-User question
-     │
-     ▼
- FastAPI Route              ← HTTP transport only
-     │
-     ▼
- StockInsightService        ← Orchestrates all steps
-     ├── OpenAIService.extract_tickers()      ← question → ticker list
-     ├── FinnhubService.get_quote()           ← real-time price
-     ├── FinnhubService.get_company_profile() ← company metadata
-     ├── FinnhubService.get_pe_ratio()        ← P/E ratio
-     ├── FinnhubService.get_candles()         ← historical data (if period detected)
-     └── OpenAIService.generate_summary()     ← LLM summary from structured data
 ```
 
 ---
@@ -132,6 +132,7 @@ docker compose up --build
 ## Access the Application
 
 - Frontend (Streamlit): http://localhost:8501
+- Backend API: http://localhost:8000
 - Backend API Docs (FastAPI Swagger): http://localhost:8000/docs
 
 ---
@@ -148,12 +149,6 @@ docker compose up
 # Rebuild backend only
 docker compose up --build backend
 ```
-
-| Service | URL |
-|---|---|
-| Streamlit UI | http://localhost:8501 |
-| Backend API | http://localhost:8000 |
-| Swagger docs | http://localhost:8000/docs |
 
 ### Without Docker
 
@@ -222,9 +217,9 @@ docker compose run --rm backend ruff check app/ --fix
 
 **Using OpenAI for interpretation, not market data** — OpenAI is used to understand the user's question and summarise the results, while all stock data comes directly from Finnhub. This helps reduce the risk of the model inventing financial information and keeps responses grounded in real market data.
 
-**Streamlit over a custom frontend** — I chose Streamlit because it allowed me to focus on the backend architecture and AI workflow rather than spending time building a frontend from scratch. The trade-off is less flexibility in the user interface.
+**Streamlit over a custom frontend** — I chose Streamlit because it allowed me to focus on the backend architecture and AI workflow rather than spending time building a frontend from scratch. The trade-off is less flexibility and customisation in the user interface.
 
-**Favouring reliability over completeness** — If some non-essential data cannot be retrieved (for example historical candle data), the application still returns a useful response rather than failing completely. This provides a better user experience, although some context may be missing.
+**Favouring reliability over completeness** — If some non-essential data cannot be retrieved (for example a company profile or P/E ratio), the application still returns a useful response rather than failing completely. This provides a better user experience, although some context may be missing.
 
 **Focusing on US-listed stocks and ETFs** — To keep the scope manageable, I focused on US-listed securities. Supporting multiple exchanges and regions would require additional symbol resolution and market-specific handling.
 
@@ -232,15 +227,11 @@ docker compose run --rm backend ruff check app/ --fix
 
 ## What I'd Improve With More Time
 
-- **Additional metrics & technical indicators** — Expand the data fetched from Finnhub to include metrics such as moving averages, RSI, earnings per share, and dividend yield for richer analysis.
-- **Better financial context** — Incorporate earnings calendars, analyst ratings, insider trading activity, and macroeconomic indicators for deeper insight.
+- **Richer financial data** — Expand the data fetched from Finnhub to include additional metrics such as moving averages, RSI, earnings per share, and dividend yield, as well as broader context like earnings calendars, analyst ratings, and macroeconomic indicators.
 - **News & sentiment analysis** — Incorporate recent company news, earnings coverage, and sentiment signals to provide richer context beyond market data alone.
 - **International markets** — Expand beyond US-listed equities to support international exchanges and additional asset classes.
 - **Request validation and guardrails** — Improve handling of ambiguous or unsupported prompts and add stricter validation around ticker extraction.
-- **Portfolio & watchlist support** — Allow users to save favourite stocks, build watchlists, and track portfolio performance across sessions.
-- **Streaming responses** — Stream OpenAI responses token-by-token for a more responsive conversational experience.
 - **Caching & rate limiting** — Introduce in-memory caching to reduce duplicate API requests and better manage third-party API quotas.
-- **Retries and fallbacks** — Improve resilience when external APIs fail or rate limit, with automatic retries and graceful degradation.
 - **Authentication & persistence** — Add user authentication and persistent storage for saved portfolios, preferences, and query history.
 - **Monitoring & observability** — Add structured logs, metrics dashboards, health checks, and alerting for production visibility.
 - **Better testing** — Add integration and end-to-end tests covering API failures, edge cases, and full request flows.
@@ -253,7 +244,6 @@ docker compose run --rm backend ruff check app/ --fix
 
 I used ChatGPT and Claude throughout the project as development assistants.
 
-ChatGPT was most helpful for high-level decisions, theoretical questions, and exploring ideas — such as architecture discussions, testing approaches, and general software engineering concepts.
-Claude was most helpful for hands-on coding and debugging — iterating on implementation details, fixing issues, refining prompts, and reviewing code structure.
+ChatGPT was most helpful for high-level decisions, theoretical questions, and exploring ideas, such as architecture discussions, testing approaches, and general software engineering concepts. Claude was most helpful for hands-on coding and debugging, such as iterating on implementation details, fixing issues, refining prompts, and reviewing code structure.
 
 Both tools helped speed up development and explore alternative approaches, but all code, design decisions, testing, and final implementation choices were reviewed and validated by me.
