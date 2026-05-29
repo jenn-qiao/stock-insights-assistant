@@ -78,12 +78,17 @@ frontend/
 - Finnhub API key — [finnhub.io](https://finnhub.io)
 - OpenAI API key — [platform.openai.com](https://platform.openai.com)
 
-### Environment variables
+### Quick start
 
 ```bash
+git clone https://github.com/jenn-qiao/jenniferq-stock-insights-assistant.git
+cd jenniferq-stock-insights-assistant
 cp .env.example .env
-# Fill in FINNHUB_API_KEY and OPENAI_API_KEY
+# Fill in FINNHUB_API_KEY and OPENAI_API_KEY in .env
+docker compose up --build
 ```
+
+Then open http://localhost:8501
 
 ---
 
@@ -117,6 +122,25 @@ cd backend && uvicorn app.main:app --reload
 
 # Terminal 2
 cd frontend && streamlit run app.py
+```
+
+---
+
+## Troubleshooting
+
+If ports are already in use, stop existing Docker containers:
+
+```bash
+docker compose down
+```
+
+Or update the port mappings in `docker-compose.yml`.
+
+Example:
+
+```yaml
+ports:
+  - "8502:8501"
 ```
 
 ---
